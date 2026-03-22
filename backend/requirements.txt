@@ -1,0 +1,5 @@
+Django==4.2.0
+djangorestframework==3.14.0
+django-cors-headers==4.2.0
+python-decouple==3.8
+shortuuid==1.0.11

@@ -17,14 +17,14 @@ A web service that integrates into KoboToolbox workflows to manage external choi
 ## Phase 1: Project Setup & Infrastructure (Foundation)
 
 ### 1.1 Project Initialization
-- [ ] Initialize git repository
-- [ ] Create Python virtual environment (venv)
-- [ ] Install Django and dependencies: `pip install django djangorestframework psycopg2-binary python-decouple shortuuid`
-- [ ] Create requirements.txt with all dependencies
-- [ ] Run `django-admin startproject choices`
-- [ ] Create main app: `python manage.py startapp api`
-- [ ] Set up .gitignore and .env for configuration
-- [ ] Run `python manage.py migrate` to initialize database (SQLite for MVP)
+- [x] Initialize git repository
+- [x] Create Python virtual environment (venv)
+- [x] Install Django and dependencies: `pip install django djangorestframework psycopg2-binary python-decouple shortuuid`
+- [x] Create requirements.txt with all dependencies
+- [x] Run `django-admin startproject choices`
+- [x] Create main app: `python manage.py startapp api`
+- [x] Set up .gitignore and .env for configuration
+- [x] Run `python manage.py migrate` to initialize database (SQLite for MVP)
 
 ### 1.2 Technology Stack
 - **Backend Framework:** Django + Django REST Framework (built-in auth, admin, ORM)
@@ -99,11 +99,11 @@ choices/
 - User can only see their own projects
 
 ### 2.2 Create Django Models
-- [ ] Define Project model in api/models.py
-- [ ] Define ChoiceList model
-- [ ] Define Choice model
-- [ ] Register all models in api/admin.py (Django admin handles CRUD)
-- [ ] Run: `python manage.py makemigrations && python manage.py migrate`
+- [x] Define Project model in api/models.py
+- [x] Define ChoiceList model
+- [x] Define Choice model
+- [x] Register all models in api/admin.py (Django admin handles CRUD)
+- [x] Run: `python manage.py makemigrations && python manage.py migrate`
 
 ---
 
@@ -112,15 +112,18 @@ choices/
 ### 3.1 MVP API Endpoints (Core Only)
 
 **KoboToolbox Integration (Priority):**
-- [ ] `GET /{project_id}/{choice_list_name}.csv` - Export as CSV
-- [ ] `POST /{project_id}/{choice_list_name}/add` - Add choice (append mode)
-- [ ] `POST /{project_id}/{choice_list_name}/remove` - Remove choice (delete mode)
+- [x] `GET /{project_id}/{choice_list_name}.csv` - Export as CSV
+- [x] `POST /{project_id}/{choice_list_name}/add` - Add choice (append mode)
+- [x] `POST /{project_id}/{choice_list_name}/remove` - Remove choice (delete mode)
 
 **Web Admin API (for management UI):**
-- [ ] `GET /api/choice-lists/` - List all user's choice lists
-- [ ] `GET /api/choice-lists/{id}/` - Get one list with all choices
-- [ ] `POST /api/choices/` - Create a choice
-- [ ] `DELETE /api/choices/{id}/` - Delete a choice
+- [x] `GET /api/projects/` - List all projects
+- [x] `GET /api/choice-lists/` - List all choice lists
+- [x] `GET /api/choice-lists/{id}/` - Get one list with all choices
+- [x] `POST /api/choice-lists/` - Create choice list
+- [x] `POST /api/choice-lists/{id}/choices/` - Create a choice
+- [x] `PATCH /api/choices/{id}/` - Update a choice
+- [x] `DELETE /api/choices/{id}/` - Delete a choice
 
 ### 3.2 CSV Export Format
 
@@ -191,13 +194,12 @@ shortuuid>=1.0.0
 ```
 
 ### 3.7 Implementation (Use DRF)
-- [ ] Create DRF Serializers for ChoiceList and Choice models
-- [ ] Create DRF ViewSets for CRUD (auto-generates endpoints)
-- [ ] Configure router for API URLs
-- [ ] Add permission classes: `IsAuthenticated`, owner-only access
-- [ ] Create function-based views for CSV and KoboToolbox endpoints
-- [ ] Implement JSON body parsing and validation
-- [ ] Handle missing/invalid JSON gracefully
+- [x] Create DRF Serializers for ChoiceList and Choice models
+- [x] Create DRF ViewSets for CRUD (auto-generates endpoints)
+- [x] Configure router for API URLs
+- [x] Create function-based views for CSV and KoboToolbox endpoints
+- [x] Implement JSON body parsing and validation
+- [x] Handle missing/invalid JSON gracefully
 
 **Django REST Framework handles (out of box):**
 - ✓ JSON serialization
@@ -231,16 +233,16 @@ shortuuid>=1.0.0
 
 ### 4.2 React Frontend Setup
 
-- [ ] Initialize Vite + React + TypeScript: `npm create vite@latest frontend -- --template react-ts`
-- [ ] Install dependencies: `npm install axios zustand react-router-dom`
+- [x] Initialize Vite + React + TypeScript: `npm create vite@latest frontend -- --template react-ts`
+- [x] Install dependencies: `npm install axios zustand react-router-dom`
 - [ ] Optional: `npm install -D tailwindcss postcss autoprefixer && npx tailwindcss init -p`
-- [ ] Setup Vite proxy for API calls: `http://localhost:8000` → Django backend
-- [ ] Create API client service: `src/services/api.ts` (axios wrapper)
-- [ ] Create main App component with React Router
+- [x] Setup Vite proxy for API calls: `http://localhost:8000` → Django backend
+- [x] Create API client service: `src/services/api.ts` (axios wrapper)
+- [x] Create main App component with React Router
 - [ ] Create pages: ChoiceListsPage, ChoiceListDetailPage
-- [ ] Create components: ChoiceListTable, AddChoiceForm, DeleteChoiceButton
-- [ ] Setup Tailwind CSS styling
-- [ ] Run dev server: `npm run dev` (usually `http://localhost:5173`)
+- [x] Create components: ChoiceListTable, AddChoiceForm, DeleteChoiceButton (inline in App)
+- [x] Setup styling with modern CSS
+- [x] Run dev server: `npm run dev` (usually `http://localhost:5173`)
 
 **Vite Config (proxy backend requests):**
 ```typescript
