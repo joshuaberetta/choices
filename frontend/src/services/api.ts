@@ -4,18 +4,29 @@ const API = axios.create({
   baseURL: '/api',
 });
 
+export interface PaginatedResponse<T> {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+}
+
 export interface Project {
   id: number;
   slug: string;
   name: string;
   description: string;
+  owner: number | null;
   created_at: string;
   updated_at: string;
+  choice_lists?: ChoiceList[];
 }
 
 export interface ChoiceList {
   id: number;
   project: number;
+  project_slug: string;
+  project_name: string;
   slug: string;
   name: string;
   description: string;
@@ -33,9 +44,9 @@ export interface Choice {
   created_at: string;
 }
 
-export const apiClient = {
+const apiClient = {
   // Projects
-  getProjects: () => API.get<Project[]>('/projects/'),
+  getProjects: () => API.get<PaginatedResponse<Project>>('/projects/'),
   getProject: (id: string | number) => API.get<Project>(`/projects/${id}/`),
   createProject: (data: Partial<Project>) => API.post<Project>('/projects/', data),
   updateProject: (id: string | number, data: Partial<Project>) =>
@@ -43,25 +54,19 @@ export const apiClient = {
   deleteProject: (id: string | number) => API.delete(`/projects/${id}/`),
 
   // Choice Lists
-  getChoiceLists: () => API.get<ChoiceList[]>('/choice-lists/'),
+  getChoiceLists: () => API.get<PaginatedResponse<ChoiceList>>('/choice-lists/'),
   getChoiceList: (id: string | number) => API.get<ChoiceList>(`/choice-lists/${id}/`),
   createChoiceList: (data: Partial<ChoiceList>) => API.post<ChoiceList>('/choice-lists/', data),
   updateChoiceList: (id: string | number, data: Partial<ChoiceList>) =>
     API.patch<ChoiceList>(`/choice-lists/${id}/`, data),
   deleteChoiceList: (id: string | number) => API.delete(`/choice-lists/${id}/`),
 
-  // Choices
-  getChoices: (listId: string | number) =>
-    API.get<Choice[]>(`/choices/?choice_list=${listId}`),
-  createChoice: (listId: string | number, data: Partial<Choice>) =>
-    API.post<Choice>(`/choices/`, { ...data, choice_list: listId }),
+  // Choices (POST to choice-lists action — auto-generates value ID)
+  createChoice: (listId: string | number, label: string) =>
+    API.post<Choice>(`/choice-lists/${listId}/choices/`, { label }),
   updateChoice: (id: string | number, data: Partial<Choice>) =>
     API.patch<Choice>(`/choices/${id}/`, data),
   deleteChoice: (id: string | number) => API.delete(`/choices/${id}/`),
-
-  // CSV Export
-  exportCSV: (projectId: string, listName: string) =>
-    API.get(`/${projectId}/${listName}.csv`, { responseType: 'text' }),
 };
 
 export default apiClient;

@@ -36,57 +36,25 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
             return ChoiceListDetailSerializer
         return ChoiceListSerializer
     
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=['get', 'post'])
     def choices(self, request, pk=None):
-        """Get all choices for a specific choice list"""
         choice_list = self.get_object()
-        choices = choice_list.choices.all()
-        serializer = ChoiceSerializer(choices, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=True, methods=['post'])
-    def add_choice(self, request, pk=None):
-        """Add a choice to this list (alternative to POST /api/choices/)"""
-        choice_list = self.get_object()
-        
-        try:
-            data = request.data
-            label = data.get('label') or data.get('name')
-            
-            if not label:
-                return Response(
-                    {'error': 'label is required'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Check if choice already exists (idempotent)
-            existing = choice_list.choices.filter(label=label).first()
-            if existing:
-                return Response({
-                    'id': existing.id,
-                    'label': existing.label,
-                    'value': existing.value,
-                    'message': 'Choice already exists'
-                })
-            
-            # Generate short ID
-            value = shortuuid.ShortUUID().random()
-            
-            # Create new choice
-            choice = Choice.objects.create(
-                choice_list=choice_list,
-                label=label,
-                value=value
-            )
-            
-            serializer = ChoiceSerializer(choice)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+
+        if request.method == 'GET':
+            serializer = ChoiceSerializer(choice_list.choices.all(), many=True)
+            return Response(serializer.data)
+
+        # POST: create a new choice
+        label = request.data.get('label') or request.data.get('name')
+        if not label:
+            return Response({'error': 'label is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if choice_list.choices.filter(label=label).exists():
+            return Response({'error': 'A choice with this label already exists'}, status=status.HTTP_400_BAD_REQUEST)
+
+        value = shortuuid.ShortUUID().random(length=9)
+        choice = Choice.objects.create(choice_list=choice_list, label=label, value=value)
+        return Response(ChoiceSerializer(choice).data, status=status.HTTP_201_CREATED)
 
 
 class ChoiceViewSet(viewsets.ModelViewSet):
@@ -182,16 +150,16 @@ class KoboAddChoiceView(APIView):
                     'value': label
                 })
             
-            # Generate short ID
-            value = shortuuid.ShortUUID().random()
-            
+            # Generate short ID (9 chars alphanumeric)
+            value = shortuuid.ShortUUID().random(length=9)
+
             # Create new choice
             choice = Choice.objects.create(
                 choice_list=choice_list,
                 label=label,
                 value=value
             )
-            
+
             return Response({
                 'success': True,
                 'message': 'Choice added successfully',

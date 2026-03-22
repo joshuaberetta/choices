@@ -8,6 +8,7 @@ class Project(models.Model):
     slug = models.CharField(max_length=255, unique=True, help_text="Project slug (e.g., aQQv2xc99EodN8pB8GZ6Jq)")
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
+    owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='projects')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

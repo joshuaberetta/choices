@@ -23,7 +23,7 @@ A web service that integrates into KoboToolbox workflows to manage external choi
 - [x] Create requirements.txt with all dependencies
 - [x] Run `django-admin startproject choices`
 - [x] Create main app: `python manage.py startapp api`
-- [x] Set up .gitignore and .env for configuration
+- [x] Set up .gitignore and .env for configuration (python-decouple wired for SECRET_KEY, DEBUG, ALLOWED_HOSTS)
 - [x] Run `python manage.py migrate` to initialize database (SQLite for MVP)
 
 ### 1.2 Technology Stack
@@ -99,7 +99,7 @@ choices/
 - User can only see their own projects
 
 ### 2.2 Create Django Models
-- [x] Define Project model in api/models.py
+- [x] Define Project model in api/models.py (includes owner FK to User)
 - [x] Define ChoiceList model
 - [x] Define Choice model
 - [x] Register all models in api/admin.py (Django admin handles CRUD)
@@ -179,8 +179,8 @@ Use `shortuuid` library for readable, shorter IDs:
 import shortuuid
 
 def generate_short_id():
-    # Generate short UUID like: sgdgbs324
-    return shortuuid.ShortUUID().random()
+    # Generate short UUID like: sgdgbs324 (9 chars)
+    return shortuuid.ShortUUID().random(length=9)
 ```
 
 **Installation:**
@@ -216,13 +216,13 @@ shortuuid>=1.0.0
 
 **Backend (Django API):**
 - [ ] Enable Django admin: create superuser (`python manage.py createsuperuser`)
-- [ ] KoboToolbox integration endpoints (`/add`, `/remove`, `.csv`) are **public** (no auth required)
-- [ ] Admin API endpoints can be accessed via Django admin or direct DB access
+- [x] KoboToolbox integration endpoints (`/add`, `/remove`, `.csv`) are **public** (no auth required)
+- [x] Admin API endpoints can be accessed via Django admin or direct DB access
 
 **Frontend (React + Vite):**
-- [ ] No authentication UI for MVP (admin only accesses via Django admin)
-- [ ] Frontend is a simple management dashboard (read-only or basic CRUD)
-- [ ] API calls work against public `/add`, `/remove`, `.csv` endpoints
+- [x] No authentication UI for MVP (admin only accesses via Django admin)
+- [x] Frontend is a simple management dashboard (read-only or basic CRUD)
+- [x] API calls work against public `/add`, `/remove`, `.csv` endpoints
 - [ ] Later: add login form and token auth when multi-user support added
 
 **Later (Phase 2): Add multi-user support**
@@ -243,6 +243,7 @@ shortuuid>=1.0.0
 - [x] Create components: ChoiceListTable, AddChoiceForm, DeleteChoiceButton (inline in App)
 - [x] Setup styling with modern CSS
 - [x] Run dev server: `npm run dev` (usually `http://localhost:5173`)
+- [x] Both dev servers running and verified (backend :8000, frontend :5173)
 
 **Vite Config (proxy backend requests):**
 ```typescript

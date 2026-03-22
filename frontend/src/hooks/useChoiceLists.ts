@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { ChoiceList } from '../services/api';
+import type { ChoiceList, Project } from '../services/api';
 import apiClient from '../services/api';
 
 export const useChoiceLists = () => {
@@ -12,7 +12,7 @@ export const useChoiceLists = () => {
       setLoading(true);
       setError(null);
       const response = await apiClient.getChoiceLists();
-      setChoiceLists(response.data);
+      setChoiceLists(response.data.results);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch choice lists');
     } finally {
@@ -50,4 +50,26 @@ export const useChoiceList = (id: string | number) => {
   }, [id]);
 
   return { choiceList, loading, error, refetch: fetchChoiceList };
+};
+
+export const useProjects = () => {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchProjects = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await apiClient.getProjects();
+      setProjects(response.data.results);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch projects');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchProjects(); }, []);
+  return { projects, loading, error, refetch: fetchProjects };
 };
