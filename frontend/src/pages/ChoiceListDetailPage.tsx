@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import axios from 'axios'
 import { Link, useParams } from 'react-router-dom'
 import { useChoiceList } from '../hooks/useChoiceLists'
 import apiClient from '../services/api'
@@ -20,8 +21,14 @@ export default function ChoiceListDetailPage() {
       await apiClient.createChoice(id, label.trim())
       setLabel('')
       refetch()
-    } catch {
-      setAddError('Failed to add choice. The label may already exist.')
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err) && err.response?.data) {
+        const data = err.response.data
+        const msg = data.error || data.detail || data.label?.[0] || JSON.stringify(data)
+        setAddError(`Failed to add choice: ${msg}`)
+      } else {
+        setAddError('Failed to add choice. Please try again.')
+      }
     } finally {
       setAdding(false)
     }

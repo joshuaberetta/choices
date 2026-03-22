@@ -2,6 +2,9 @@ import axios from 'axios';
 
 const API = axios.create({
   baseURL: '/api',
+  xsrfCookieName: 'csrftoken',
+  xsrfHeaderName: 'X-CSRFToken',
+  withCredentials: true,
 });
 
 export interface PaginatedResponse<T> {

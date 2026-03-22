@@ -5,9 +5,20 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.authentication import BasicAuthentication
+from rest_framework.permissions import AllowAny
+from rest_framework.parsers import JSONParser, BaseParser
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
 import shortuuid
+
+
+class PlainTextJSONParser(BaseParser):
+    """Parses text/plain bodies as JSON (for KoboToolbox compatibility)"""
+    media_type = 'text/plain'
+
+    def parse(self, stream, media_type=None, parser_context=None):
+        return json.loads(stream.read().decode('utf-8'))
 
 from .models import Project, ChoiceList, Choice
 from .serializers import (
@@ -68,6 +79,8 @@ class KoboCSVExportView(APIView):
     Export choices as CSV for KoboToolbox external choice list.
     Endpoint: GET /{project_id}/{choice_list_name}.csv
     """
+    authentication_classes = []
+    permission_classes = [AllowAny]
     
     def get(self, request, project_id, choice_list_name):
         """
@@ -113,6 +126,9 @@ class KoboAddChoiceView(APIView):
     Request format: {"name": "Joshua Beretta"} (key can be any name)
     Response format: {"success": true, "choice_id": "sgdgbs324", ...}
     """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    parser_classes = [JSONParser, PlainTextJSONParser]
     
     def post(self, request, project_id, choice_list_name):
         """
@@ -128,7 +144,14 @@ class KoboAddChoiceView(APIView):
             )
             
             # Extract first value from JSON body
+            # KoboToolbox may send content-type: text/plain, so fall back to
+            # parsing raw body if DRF didn't parse it
             data = request.data
+            if not data:
+                try:
+                    data = json.loads(request.body)
+                except (json.JSONDecodeError, Exception):
+                    data = {}
             label = next(iter(data.values())) if data else None
             
             if not label:
@@ -185,6 +208,9 @@ class KoboRemoveChoiceView(APIView):
     Request format: {"name": "Joshua Beretta"} (key can be any name)
     Response format: {"success": true, ...}
     """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    parser_classes = [JSONParser, PlainTextJSONParser]
     
     def post(self, request, project_id, choice_list_name):
         """
@@ -200,7 +226,14 @@ class KoboRemoveChoiceView(APIView):
             )
             
             # Extract first value from JSON body
+            # KoboToolbox may send content-type: text/plain, so fall back to
+            # parsing raw body if DRF didn't parse it
             data = request.data
+            if not data:
+                try:
+                    data = json.loads(request.body)
+                except (json.JSONDecodeError, Exception):
+                    data = {}
             label = next(iter(data.values())) if data else None
             
             if not label:
