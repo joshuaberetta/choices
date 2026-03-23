@@ -19,6 +19,15 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
+      // KoboToolbox endpoints: /<username>/<project>/<list>/export/<file>.csv  and  /<username>/<project>/<list>/(add|remove|delete)
+      '^/[^/]+/[^/]+/[^/]+/export/[^/]+\.csv$': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '^/[^/]+/[^/]+/[^/]+/(add|remove|delete)$': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
     },
   },
 })

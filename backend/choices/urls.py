@@ -23,7 +23,7 @@ urlpatterns = [
     path('api/', include('api.urls')),  # Management API (DRF ViewSets)
 
     # KoboToolbox integration endpoints at root level (no /api/ prefix)
-    path('<str:username>/<str:project_id>/<str:choice_list_name>.csv', KoboCSVExportView.as_view(), name='kobo-csv-export'),
+    path('<str:username>/<str:project_id>/<str:choice_list_name>/export/<str:filename>.csv', KoboCSVExportView.as_view(), name='kobo-csv-export'),
     path('<str:username>/<str:project_id>/<str:choice_list_name>/add', KoboAddChoiceView.as_view(), name='kobo-add-choice'),
     path('<str:username>/<str:project_id>/<str:choice_list_name>/remove', KoboRemoveChoiceView.as_view(), name='kobo-remove-choice'),
     path('<str:username>/<str:project_id>/<str:choice_list_name>/delete', KoboDeleteChoiceView.as_view(), name='kobo-delete-choice'),

@@ -377,7 +377,7 @@ class KoboCSVExportView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
     
-    def get(self, request, username, project_id, choice_list_name):
+    def get(self, request, username, project_id, choice_list_name, filename=None):
         """
         Returns a CSV with name,label columns.
         Looks up project by slug and choice list by slug.
