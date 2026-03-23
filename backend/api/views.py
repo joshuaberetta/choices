@@ -53,6 +53,18 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
             return ChoiceListDetailSerializer
         return ChoiceListSerializer
 
+    def get_queryset(self):
+        from django.db.models import Count
+        qs = super().get_queryset()
+        if self.action == 'list':
+            qs = qs.annotate(choices_count_annotation=Count('choices'))
+        elif self.action in ('retrieve', 'export', 'import_csv'):
+            qs = qs.prefetch_related(
+                'columns',
+                Prefetch('choices', queryset=Choice.objects.prefetch_related('extra_values')),
+            )
+        return qs
+
     def retrieve(self, request, *args, **kwargs):
         """Ensure system columns exist before returning the detail view."""
         instance = self.get_object()
@@ -64,15 +76,6 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
         ).get(pk=instance.pk)
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
-
-    def get_queryset(self):
-        qs = super().get_queryset()
-        if self.action in ('retrieve', 'export', 'import_csv'):
-            qs = qs.prefetch_related(
-                'columns',
-                Prefetch('choices', queryset=Choice.objects.prefetch_related('extra_values')),
-            )
-        return qs
 
     @action(detail=True, methods=['get', 'post'])
     def choices(self, request, pk=None):

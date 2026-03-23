@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.db.models import Count
 from .models import Project, ChoiceList, Choice, ChoiceListColumn, ChoiceExtraValue
 
 
@@ -48,11 +49,17 @@ class ChoiceListSerializer(serializers.ModelSerializer):
     """Serializer for choice list (without nested choices)"""
     project_slug = serializers.CharField(source='project.slug', read_only=True)
     project_name = serializers.CharField(source='project.name', read_only=True)
+    choices_count = serializers.SerializerMethodField()
+
+    def get_choices_count(self, obj):
+        if hasattr(obj, 'choices_count_annotation'):
+            return obj.choices_count_annotation
+        return obj.choices.count()
 
     class Meta:
         model = ChoiceList
-        fields = ['id', 'project', 'project_slug', 'project_name', 'slug', 'name', 'description', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'project_slug', 'project_name', 'created_at', 'updated_at']
+        fields = ['id', 'project', 'project_slug', 'project_name', 'slug', 'name', 'description', 'created_at', 'updated_at', 'choices_count']
+        read_only_fields = ['id', 'project_slug', 'project_name', 'created_at', 'updated_at', 'choices_count']
 
 
 class ProjectSerializer(serializers.ModelSerializer):

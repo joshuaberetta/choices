@@ -35,6 +35,7 @@ export interface ChoiceList {
   description: string;
   created_at: string;
   updated_at: string;
+  choices_count: number;
   columns?: ChoiceListColumn[];
   choices?: Choice[];
 }
