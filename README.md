@@ -1,6 +1,6 @@
 # Choices Service
 
-A web service that integrates into [KoboToolbox](https://www.kobotoolbox.org/) workflows to manage external choice lists. It provides a REST API for KoboToolbox to dynamically add/remove choice options, plus a web UI for manual management.
+A web service that integrates into [KoboToolbox](https://www.kobotoolbox.org/) workflows to manage external choice lists. It provides a webhook API for KoboToolbox to dynamically add/remove choice options, plus a full web UI for manual management.
 
 **Live:** `choices.imtools.info`
 
@@ -12,6 +12,10 @@ A web service that integrates into [KoboToolbox](https://www.kobotoolbox.org/) w
 - [Tech Stack](#tech-stack)
 - [Data Models](#data-models)
 - [API Reference](#api-reference)
+  - [KoboToolbox Integration Endpoints](#kobotoolbox-integration-endpoints)
+  - [Management REST API](#management-rest-api)
+  - [Authentication API](#authentication-api)
+- [Features](#features)
 - [Development Setup](#development-setup)
 - [Production Deployment](#production-deployment)
 - [Environment Variables](#environment-variables)
@@ -26,13 +30,14 @@ Browser / KoboToolbox
         │
         ▼
    Nginx (port 80)
-   ├── /api/*          → Django (Gunicorn :8000)
-   ├── /admin/*        → Django (Gunicorn :8000)
-   ├── /static/*       → Django / WhiteNoise
-   ├── /<id>/*.csv     → Django (CSV export)
-   ├── /<id>/*/add     → Django (KoboToolbox webhook)
-   ├── /<id>/*/remove  → Django (KoboToolbox webhook)
-   └── /*              → React SPA (served from Nginx)
+   ├── /api/*                    → Django (Gunicorn :8000)
+   ├── /admin/*                  → Django (Gunicorn :8000)
+   ├── /static/*                 → Django / WhiteNoise
+   ├── /{user}/{id}/*/export/*   → Django (CSV export for KoboToolbox)
+   ├── /{user}/{id}/*/add        → Django (KoboToolbox webhook)
+   ├── /{user}/{id}/*/remove     → Django (KoboToolbox soft-delete webhook)
+   ├── /{user}/{id}/*/delete     → Django (KoboToolbox hard-delete webhook)
+   └── /*                        → React SPA (served from Nginx)
 ```
 
 The frontend is a React SPA bundled by Vite and served as static files by Nginx. The backend is Django + DRF behind Gunicorn. SQLite is used for persistence (stored in a Docker named volume in production).
@@ -53,6 +58,7 @@ The frontend is a React SPA bundled by Vite and served as static files by Nginx.
 | Frontend HTTP | Axios |
 | Frontend state | Zustand |
 | Frontend routing | React Router 7 |
+| Frontend drag-and-drop | @dnd-kit/core + @dnd-kit/sortable |
 | Reverse proxy | Nginx |
 | Containerisation | Docker + Docker Compose |
 
@@ -62,21 +68,39 @@ The frontend is a React SPA bundled by Vite and served as static files by Nginx.
 
 ```
 Project
-├── slug        (unique, e.g. "aQQv2xc99EodN8pB8GZ6Jq" — matches KoboToolbox project ID)
+├── slug              (unique, e.g. "aQQv2xc99EodN8pB8GZ6Jq" — matches KoboToolbox project ID)
 ├── name
 ├── description
-└── owner       (FK → User, optional)
+└── owner             (FK → User)
 
 ChoiceList
-├── project     (FK → Project)
-├── slug        (e.g. "fruits")
+├── project           (FK → Project)
+├── slug              (e.g. "fruits"; unique within project)
 ├── name
-└── description
+├── description
+├── label_column_name (CSV export header for label; default "label"; e.g. "label::English (en)")
+├── name_generation   ("uuid" | "from_label"; controls how choice values are auto-generated)
+└── name_max_length   (max length for from_label names; 0 = no limit)
+
+ChoiceListColumn      (extra named columns attached to a ChoiceList)
+├── choice_list       (FK → ChoiceList)
+├── name              (column identifier)
+└── order
+
+  System columns (created lazily, cannot be renamed/deleted):
+    "removed"   — soft-delete flag; "true"/"false"
+    "protected" — prevents soft-delete via webhook; "true"/"false"
+    "pin"       — pins choice to bottom of list when new choices arrive; "true"/"false"
+
+ChoiceExtraValue      (sparse: one row per choice × column pair with a value)
+├── choice            (FK → Choice)
+├── column            (FK → ChoiceListColumn)
+└── value
 
 Choice
-├── choice_list (FK → ChoiceList)
-├── value       (short UUID, auto-generated)
-├── label       (human-readable, unique within list)
+├── choice_list       (FK → ChoiceList)
+├── value             (short UUID or label-derived slug — the XLSForm "name" column)
+├── label             (human-readable; unique within list)
 └── order
 ```
 
@@ -86,38 +110,90 @@ Choice
 
 ### KoboToolbox Integration Endpoints
 
-These endpoints are called directly by KoboToolbox and require no authentication.
+These endpoints require no authentication and are called directly by KoboToolbox.
+All URLs are scoped to a **username** so each user's projects are isolated.
 
 | Method | URL | Description |
 |--------|-----|-------------|
-| `GET` | `/{project_id}/{list_name}.csv` | Download choice list as CSV (`name,label` columns) |
-| `POST` | `/{project_id}/{list_name}/add` | Add a choice (idempotent) |
-| `POST` | `/{project_id}/{list_name}/remove` | Remove a choice by label |
+| `GET` | `/{username}/{project_id}/{list_name}/export/{filename}.csv` | Download choice list as CSV |
+| `POST` | `/{username}/{project_id}/{list_name}/add` | Add a choice (idempotent; re-activates soft-deleted choices) |
+| `POST` | `/{username}/{project_id}/{list_name}/remove` | Soft-delete a choice by value/ID |
+| `POST` | `/{username}/{project_id}/{list_name}/delete` | Hard-delete a choice by value/ID |
 
-**Add/Remove request body** — send JSON with any key containing the label value:
+**CSV export** includes all extra columns (including system columns). The label header respects the `label_column_name` setting on the choice list.
+
+**Add/Remove/Delete request body** — send JSON with any key; the first value is used as the label (add) or choice value/ID (remove/delete):
 ```json
 { "name": "Joshua Beretta" }
 ```
+`content-type: text/plain` with a JSON body is also accepted (KoboToolbox compatibility).
 
 **Add response:**
 ```json
 {
   "success": true,
+  "message": "Choice added successfully",
   "choice_id": "sgdgbs324",
-  "label": "Joshua Beretta",
-  "created": true
+  "value": "Joshua Beretta"
 }
 ```
 
+When a new choice is added via the webhook, all non-pinned choices in the list are re-sorted alphabetically. Pinned choices (`pin=true`) remain at the bottom of the list in their existing order.
+
+**Remove response (soft-delete):**
+```json
+{ "success": true, "message": "Choice marked as removed", "value": "sgdgbs324" }
+```
+Protected choices (`protected=true`) return `403 Forbidden` when a remove is attempted.
+
+**Delete response (hard-delete):**
+```json
+{ "success": true, "message": "Choice deleted", "value": "sgdgbs324" }
+```
+
+All webhook endpoints are idempotent — duplicate requests return `success: true`.
+
+---
+
 ### Management REST API
 
-Base path: `/api/` — requires session authentication (login via `/admin/`).
+Base path: `/api/` — requires session authentication (see [Authentication API](#authentication-api) below). All data is scoped to the authenticated user; each ViewSet filters by `owner=request.user`.
 
-| Resource | Endpoints |
-|----------|-----------|
-| Projects | `GET/POST /api/projects/` · `GET/PATCH/DELETE /api/projects/{id}/` |
-| Choice Lists | `GET/POST /api/choice-lists/` · `GET/PATCH/DELETE /api/choice-lists/{id}/` |
-| Choices | `POST /api/choice-lists/{id}/choices/` · `PATCH/DELETE /api/choices/{id}/` |
+#### Projects
+
+| Method | URL | Description |
+|--------|-----|-------------|
+| `GET` | `/api/projects/` | List all projects |
+| `POST` | `/api/projects/` | Create a project |
+| `GET` | `/api/projects/{slug}/` | Get a project |
+| `PATCH` | `/api/projects/{slug}/` | Update a project |
+| `DELETE` | `/api/projects/{slug}/` | Delete a project |
+
+#### Choice Lists
+
+| Method | URL | Description |
+|--------|-----|-------------|
+| `GET` | `/api/choice-lists/` | List all choice lists (annotated with `choices_count`) |
+| `GET` | `/api/choice-lists/?project_slug=<slug>&slug=<slug>` | Filter by project and/or list slug |
+| `POST` | `/api/choice-lists/` | Create a choice list |
+| `GET` | `/api/choice-lists/{id}/` | Get a choice list with full choices and columns |
+| `PATCH` | `/api/choice-lists/{id}/` | Update a choice list (name, description, label_column_name, name_generation, name_max_length) |
+| `DELETE` | `/api/choice-lists/{id}/` | Delete a choice list |
+| `GET` | `/api/choice-lists/{id}/export/` | Download choice list as CSV (attachment) |
+| `POST` | `/api/choice-lists/{id}/import/` | Replace all choices from an uploaded CSV (multipart `file` field) |
+| `POST` | `/api/choice-lists/{id}/choices/` | Add a new choice (auto-generates value) |
+| `POST` | `/api/choice-lists/{id}/reorder/` | Bulk-update choice order: `[{id, order}, ...]` |
+| `POST` | `/api/choice-lists/{id}/add_column/` | Add an extra column: `{name}` |
+| `PATCH` | `/api/choice-lists/{id}/update_column/` | Rename an extra column: `{column_id, name}` |
+| `DELETE` | `/api/choice-lists/{id}/remove_column/` | Delete an extra column: `{column_id}` |
+
+#### Choices
+
+| Method | URL | Description |
+|--------|-----|-------------|
+| `PATCH` | `/api/choices/{id}/` | Update a choice (label, value, order) |
+| `DELETE` | `/api/choices/{id}/` | Hard-delete a choice |
+| `PATCH` | `/api/choices/{id}/set_extra_value/` | Set a column value: `{column_id, value}` |
 
 All list endpoints return paginated responses:
 ```json
@@ -128,6 +204,75 @@ All list endpoints return paginated responses:
   "results": [...]
 }
 ```
+
+#### CSV Import format
+
+- Required columns: `name` (or `value`) and `label` (or any `label::*` XLSForm translation column)
+- Auto-detects delimiter (comma, semicolon, tab, pipe) — Excel semicolon exports are handled automatically
+- Extra columns beyond the standard set are automatically created as `ChoiceListColumn` rows
+- Reserved column names (`name`, `value`, `label`, `removed`, `protected`, `pin`) cannot be used for custom columns
+- System column values in the CSV (`removed`, `protected`, `pin`) are preserved; missing values default to `false`
+- All existing choices are replaced on import
+
+---
+
+### Authentication API
+
+Session-based authentication. Users are created via Django admin only — there is no public signup.
+
+| Method | URL | Description |
+|--------|-----|-------------|
+| `GET` | `/api/auth/csrf/` | Seed the CSRF cookie (call on app load / login page mount) |
+| `POST` | `/api/auth/login/` | Login: `{username, password}` → `{id, username}` |
+| `POST` | `/api/auth/logout/` | Logout |
+| `GET` | `/api/auth/me/` | Get current user: `{id, username}` |
+| `POST` | `/api/auth/change-password/` | Change password: `{old_password, new_password}` |
+
+A `401` response from any authenticated endpoint automatically redirects the browser to `/login`.
+
+---
+
+## Features
+
+### Choice value / name generation
+
+Each choice list has a `name_generation` setting that controls how the XLSForm `name` (value) column is populated when a new choice is created:
+
+| Mode | Behaviour |
+|------|-----------|
+| `uuid` (default) | Random 9-character short UUID (e.g. `sgdgbs324`) |
+| `from_label` | Derived from the label: lowercased, spaces → `_`, non-alphanumeric characters stripped, then truncated to `name_max_length` (if set). Uniqueness is guaranteed with a `_2`, `_3` suffix. |
+
+### System columns
+
+Three special `ChoiceListColumn` rows are created lazily on the first detail view or choice creation:
+
+| Column | Values | Behaviour |
+|--------|--------|-----------|
+| `removed` | `true` / `false` | Soft-delete flag. `true` rows are included in CSV exports but can be filtered out in KoboToolbox. The `/add` webhook re-activates soft-deleted choices instead of creating duplicates. |
+| `protected` | `true` / `false` | Blocks soft-deletion via the `/remove` webhook (returns `403`). The hard-delete button in the UI is hidden for protected choices (replaced with a 🔒 badge). |
+| `pin` | `true` / `false` | Pinned choices are sorted to the bottom of the list and exempt from alphabetical re-sorting when new choices arrive via the `/add` webhook. |
+
+System columns are rendered as checkboxes (toggle) in the UI and cannot be renamed or deleted.
+
+### Extra columns
+
+Arbitrary extra columns can be added to any choice list. Each column is a `ChoiceListColumn` row; values are stored as `ChoiceExtraValue` rows (sparse — missing row means blank value).
+
+- Click a column header to rename it inline
+- Click the ✕ button in the header to delete a column (and all its values)
+- Click "+ column" in the table header row to add a new column
+- Cell values are edited inline by clicking
+
+Extra columns are included in both the management CSV export and the KoboToolbox CSV export.
+
+### Drag-to-reorder
+
+Choices can be reordered by dragging rows. Sorting by label or value persists the order to the backend. Manual drag clears the sort indicator.
+
+### Configurable label column name
+
+The CSV `label` header can be customised per list (e.g. `label::English (en)` for XLSForm multi-language forms). This affects both the management export and the KoboToolbox CSV export.
 
 ---
 
@@ -152,11 +297,11 @@ source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # Configure environment
-cp .env.example .env       # or create .env manually (see Environment Variables section)
+# Create backend/.env — see Environment Variables section
 
 # Run migrations and start dev server
 python manage.py migrate
-python manage.py createsuperuser   # optional, for admin access
+python manage.py createsuperuser   # required for login
 python manage.py runserver
 ```
 
@@ -218,8 +363,7 @@ git clone <repo-url>
 cd choices
 
 # 2. Create the backend environment file
-cp backend/.env.example backend/.env
-# Edit backend/.env — see Environment Variables section
+# Create backend/.env — see Environment Variables section
 
 # 3. Build and start all services
 docker compose up -d --build
@@ -298,4 +442,6 @@ python manage.py createsuperuser
 docker compose exec backend python manage.py createsuperuser
 ```
 
-From the admin you can manage Projects, Choice Lists, Choices, and Users.
+From the admin you can manage Projects, Choice Lists, Choices, Columns, and Users.
+
+> **User management:** There is no public signup. All users must be created via the Django admin. Each user sees only their own projects and choice lists. Assign `owner` on any existing projects with a `NULL` owner via the admin after creating a user account.
