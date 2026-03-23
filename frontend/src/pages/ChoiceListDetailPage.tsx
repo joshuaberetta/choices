@@ -694,7 +694,7 @@ export default function ChoiceListDetailPage() {
                       onClick={() => handleSortClick('value')}
                       className="flex items-center gap-1 font-semibold text-gray-600 hover:text-indigo-700 transition-colors"
                     >
-                      Value (ID)
+                      name
                       <span className="text-xs w-4 text-center">
                         {sortCol === 'value' ? (sortDir === 'asc' ? '↑' : '↓ ×') : <span className="text-gray-300">↕</span>}
                       </span>

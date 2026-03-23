@@ -27,8 +27,8 @@ export default function App() {
         <header className="bg-gradient-to-r from-indigo-600 to-purple-700 shadow">
           <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
             <Link to="/" className="inline-flex flex-col">
-              <span className="text-xl font-bold text-white tracking-tight">Choices Manager</span>
-              <span className="text-indigo-200 text-sm">KoboToolbox external choice lists</span>
+              <span className="text-xl font-bold text-white tracking-tight">Choices</span>
+              <span className="text-indigo-200 text-sm">External choice lists for KoboToolbox</span>
             </Link>
             {user && (
               <div className="flex items-center gap-4">
