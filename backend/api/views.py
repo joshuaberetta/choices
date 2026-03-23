@@ -370,16 +370,16 @@ class KoboCSVExportView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
     
-    def get(self, request, project_id, choice_list_name):
+    def get(self, request, username, project_id, choice_list_name):
         """
         Returns a CSV with name,label columns.
         Looks up project by slug and choice list by slug.
         """
-        logger.info('CSV export | project=%s list=%s | ip=%s',
-                    project_id, choice_list_name,
+        logger.info('CSV export | user=%s project=%s list=%s | ip=%s',
+                    username, project_id, choice_list_name,
                     request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', '-')))
         try:
-            project = get_object_or_404(Project, slug=project_id)
+            project = get_object_or_404(Project, slug=project_id, owner__username=username)
             choice_list = get_object_or_404(
                 ChoiceList,
                 project=project,
@@ -421,18 +421,18 @@ class KoboAddChoiceView(APIView):
     permission_classes = [AllowAny]
     parser_classes = [JSONParser, PlainTextJSONParser]
     
-    def post(self, request, project_id, choice_list_name):
+    def post(self, request, username, project_id, choice_list_name):
         """
         Add a choice. Idempotent - returns success if already exists.
         Extracts first value from JSON body regardless of key.
         """
-        logger.info('ADD request | project=%s list=%s | ip=%s | content-type=%s | body=%r',
-                    project_id, choice_list_name,
+        logger.info('ADD request | user=%s project=%s list=%s | ip=%s | content-type=%s | body=%r',
+                    username, project_id, choice_list_name,
                     request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', '-')),
                     request.META.get('CONTENT_TYPE', '-'),
                     request.body[:500])
         try:
-            project = get_object_or_404(Project, slug=project_id)
+            project = get_object_or_404(Project, slug=project_id, owner__username=username)
             choice_list = get_object_or_404(
                 ChoiceList,
                 project=project,
@@ -669,12 +669,12 @@ class KoboRemoveChoiceView(APIView):
     permission_classes = [AllowAny]
     parser_classes = [JSONParser, PlainTextJSONParser]
 
-    def post(self, request, project_id, choice_list_name):
+    def post(self, request, username, project_id, choice_list_name):
         ip = request.META.get('REMOTE_ADDR', '-')
-        logger.info('REMOVE (soft) request | project=%s list=%s | ip=%s | content-type=%s | body=%r',
-                    project_id, choice_list_name, ip, request.content_type, request.body)
+        logger.info('REMOVE (soft) request | user=%s project=%s list=%s | ip=%s | content-type=%s | body=%r',
+                    username, project_id, choice_list_name, ip, request.content_type, request.body)
         try:
-            project = get_object_or_404(Project, slug=project_id)
+            project = get_object_or_404(Project, slug=project_id, owner__username=username)
             choice_list = get_object_or_404(ChoiceList, project=project, slug=choice_list_name)
 
             value = _extract_kobo_value(request)
@@ -726,12 +726,12 @@ class KoboDeleteChoiceView(APIView):
     permission_classes = [AllowAny]
     parser_classes = [JSONParser, PlainTextJSONParser]
 
-    def post(self, request, project_id, choice_list_name):
+    def post(self, request, username, project_id, choice_list_name):
         ip = request.META.get('REMOTE_ADDR', '-')
-        logger.info('DELETE (hard) request | project=%s list=%s | ip=%s | content-type=%s | body=%r',
-                    project_id, choice_list_name, ip, request.content_type, request.body)
+        logger.info('DELETE (hard) request | user=%s project=%s list=%s | ip=%s | content-type=%s | body=%r',
+                    username, project_id, choice_list_name, ip, request.content_type, request.body)
         try:
-            project = get_object_or_404(Project, slug=project_id)
+            project = get_object_or_404(Project, slug=project_id, owner__username=username)
             choice_list = get_object_or_404(ChoiceList, project=project, slug=choice_list_name)
 
             value = _extract_kobo_value(request)

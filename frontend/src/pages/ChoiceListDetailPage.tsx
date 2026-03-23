@@ -18,6 +18,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { useChoiceList } from '../hooks/useChoiceLists'
 import apiClient, { type Choice, type ChoiceListColumn, type ChoiceExtraValue } from '../services/api'
+import { useAuthStore } from '../store/authStore'
 
 // --------------------------------------------------------------------------
 // Helpers
@@ -242,6 +243,7 @@ function SortableChoiceRow({
 export default function ChoiceListDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { choiceList, loading, error, refetch } = useChoiceList(id!)
+  const { user } = useAuthStore()
 
   const [label, setLabel] = useState('')
   const [adding, setAdding] = useState(false)
@@ -573,10 +575,10 @@ export default function ChoiceListDetailPage() {
         <p className="text-xs font-semibold text-indigo-500 uppercase tracking-wide mb-3">KoboToolbox Integration</p>
         <div className="space-y-2 text-sm">
           {([
-            { method: 'GET',  bg: 'bg-emerald-100', fg: 'text-emerald-700', path: `/${choiceList.project_slug}/${choiceList.slug}.csv`,    note: null },
-            { method: 'POST', bg: 'bg-blue-100',    fg: 'text-blue-700',    path: `/${choiceList.project_slug}/${choiceList.slug}/add`,    note: null },
-            { method: 'POST', bg: 'bg-orange-100',  fg: 'text-orange-700',  path: `/${choiceList.project_slug}/${choiceList.slug}/remove`, note: 'soft delete (sets removed=true)' },
-            { method: 'POST', bg: 'bg-red-100',     fg: 'text-red-700',     path: `/${choiceList.project_slug}/${choiceList.slug}/delete`, note: 'hard delete' },
+            { method: 'GET',  bg: 'bg-emerald-100', fg: 'text-emerald-700', path: `/${user?.username}/${choiceList.project_slug}/${choiceList.slug}.csv`,    note: null },
+            { method: 'POST', bg: 'bg-blue-100',    fg: 'text-blue-700',    path: `/${user?.username}/${choiceList.project_slug}/${choiceList.slug}/add`,    note: null },
+            { method: 'POST', bg: 'bg-orange-100',  fg: 'text-orange-700',  path: `/${user?.username}/${choiceList.project_slug}/${choiceList.slug}/remove`, note: 'soft delete (sets removed=true)' },
+            { method: 'POST', bg: 'bg-red-100',     fg: 'text-red-700',     path: `/${user?.username}/${choiceList.project_slug}/${choiceList.slug}/delete`, note: 'hard delete' },
           ] as const).map(({ method, bg, fg, path, note }) => (
             <div key={path} className="flex items-center gap-2">
               <span className={`${bg} ${fg} px-2 py-0.5 rounded text-xs font-medium w-12 text-center shrink-0`}>{method}</span>
