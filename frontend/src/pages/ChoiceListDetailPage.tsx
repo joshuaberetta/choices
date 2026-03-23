@@ -223,6 +223,7 @@ export default function ChoiceListDetailPage() {
   const [addingColumn, setAddingColumn] = useState(false)
   const [newColumnName, setNewColumnName] = useState('')
   const [columnError, setColumnError] = useState<string | null>(null)
+  const [copiedPath, setCopiedPath] = useState<string | null>(null)
 
   useEffect(() => {
     if (choiceList?.choices) {
@@ -472,24 +473,31 @@ export default function ChoiceListDetailPage() {
       <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-5 mb-5">
         <p className="text-xs font-semibold text-indigo-500 uppercase tracking-wide mb-3">KoboToolbox Integration</p>
         <div className="space-y-2 text-sm">
-          <div className="flex items-center gap-2">
-            <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-xs font-medium w-12 text-center shrink-0">GET</span>
-            <code className="font-mono text-indigo-800 text-xs break-all">/{choiceList.project_slug}/{choiceList.slug}.csv</code>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-medium w-12 text-center shrink-0">POST</span>
-            <code className="font-mono text-indigo-800 text-xs break-all">/{choiceList.project_slug}/{choiceList.slug}/add</code>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded text-xs font-medium w-12 text-center shrink-0">POST</span>
-            <code className="font-mono text-indigo-800 text-xs break-all">/{choiceList.project_slug}/{choiceList.slug}/remove</code>
-            <span className="text-indigo-400 text-xs shrink-0">soft delete (sets removed=true)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-medium w-12 text-center shrink-0">POST</span>
-            <code className="font-mono text-indigo-800 text-xs break-all">/{choiceList.project_slug}/{choiceList.slug}/delete</code>
-            <span className="text-indigo-400 text-xs shrink-0">hard delete</span>
-          </div>
+          {([
+            { method: 'GET',  bg: 'bg-emerald-100', fg: 'text-emerald-700', path: `/${choiceList.project_slug}/${choiceList.slug}.csv`,    note: null },
+            { method: 'POST', bg: 'bg-blue-100',    fg: 'text-blue-700',    path: `/${choiceList.project_slug}/${choiceList.slug}/add`,    note: null },
+            { method: 'POST', bg: 'bg-orange-100',  fg: 'text-orange-700',  path: `/${choiceList.project_slug}/${choiceList.slug}/remove`, note: 'soft delete (sets removed=true)' },
+            { method: 'POST', bg: 'bg-red-100',     fg: 'text-red-700',     path: `/${choiceList.project_slug}/${choiceList.slug}/delete`, note: 'hard delete' },
+          ] as const).map(({ method, bg, fg, path, note }) => (
+            <div key={path} className="flex items-center gap-2">
+              <span className={`${bg} ${fg} px-2 py-0.5 rounded text-xs font-medium w-12 text-center shrink-0`}>{method}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(window.location.origin + path)
+                  setCopiedPath(path)
+                  setTimeout(() => setCopiedPath(p => p === path ? null : p), 1500)
+                }}
+                title="Click to copy"
+                className="font-mono text-indigo-800 text-xs break-all text-left hover:text-indigo-600 hover:underline cursor-pointer bg-transparent border-none p-0"
+              >
+                {copiedPath === path ? (
+                  <span className="text-emerald-600 font-medium">✓ Copied!</span>
+                ) : path}
+              </button>
+              {note && <span className="text-indigo-400 text-xs shrink-0">{note}</span>}
+            </div>
+          ))}
         </div>
       </div>
 

@@ -359,9 +359,26 @@ class KoboAddChoiceView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Check if choice already exists (idempotent)
+            # Check if choice already exists (handles both normal and soft-deleted)
             existing = choice_list.choices.filter(label=label).first()
             if existing:
+                # Check whether it has been soft-deleted
+                removed_col = choice_list.columns.filter(name='removed').first()
+                is_removed = (
+                    removed_col is not None and
+                    existing.extra_values.filter(column=removed_col, value='true').exists()
+                )
+                if is_removed:
+                    # Un-soft-delete: clear the "removed" flag
+                    existing.extra_values.filter(column=removed_col).update(value='')
+                    logger.info('ADD unremoved soft-deleted choice | label=%r value=%s | project=%s list=%s',
+                                label, existing.value, project_id, choice_list_name)
+                    return Response({
+                        'success': True,
+                        'message': 'Choice re-activated',
+                        'choice_id': existing.value,
+                        'value': label
+                    })
                 logger.info('ADD idempotent - already exists | label=%r | project=%s list=%s', label, project_id, choice_list_name)
                 return Response({
                     'success': True,
@@ -369,7 +386,7 @@ class KoboAddChoiceView(APIView):
                     'choice_id': existing.value,
                     'value': label
                 })
-            
+
             # Generate short ID (9 chars alphanumeric)
             value = shortuuid.ShortUUID().random(length=9)
 
