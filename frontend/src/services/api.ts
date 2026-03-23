@@ -7,6 +7,20 @@ const API = axios.create({
   withCredentials: true,
 });
 
+API.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401 && window.location.pathname !== '/login') {
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+
+export interface AuthUser {
+  id: number;
+  username: string;
+}
 export interface PaginatedResponse<T> {
   count: number;
   next: string | null;
@@ -33,6 +47,7 @@ export interface ChoiceList {
   slug: string;
   name: string;
   description: string;
+  label_column_name: string;
   created_at: string;
   updated_at: string;
   choices_count: number;
@@ -105,6 +120,14 @@ const apiClient = {
   // Extra column cell values
   setExtraValue: (choiceId: number, columnId: number, value: string) =>
     API.patch<ChoiceExtraValue>(`/choices/${choiceId}/set_extra_value/`, { column_id: columnId, value }),
+
+  // Auth
+  getCSRF: () => API.get('/auth/csrf/'),
+  login: (username: string, password: string) => API.post<AuthUser>('/auth/login/', { username, password }),
+  logout: () => API.post('/auth/logout/'),
+  getMe: () => API.get<AuthUser>('/auth/me/'),
+  changePassword: (oldPassword: string, newPassword: string) =>
+    API.post('/auth/change-password/', { old_password: oldPassword, new_password: newPassword }),
 };
 
 export default apiClient;

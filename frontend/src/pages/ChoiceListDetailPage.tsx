@@ -254,6 +254,11 @@ export default function ChoiceListDetailPage() {
   const [importError, setImportError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
 
+  // Label column name
+  const [labelColumnName, setLabelColumnName] = useState('label')
+  const [labelColumnEdit, setLabelColumnEdit] = useState<string | null>(null)
+  const [labelColumnError, setLabelColumnError] = useState<string | null>(null)
+
   // Column rename state
   const [columnEdit, setColumnEdit] = useState<{ id: number; draft: string } | null>(null)
   // New column add state
@@ -272,6 +277,9 @@ export default function ChoiceListDetailPage() {
     }
     if (choiceList?.columns) {
       setColumns(choiceList.columns)
+    }
+    if (choiceList?.label_column_name) {
+      setLabelColumnName(choiceList.label_column_name)
     }
   }, [choiceList])
 
@@ -456,6 +464,24 @@ export default function ChoiceListDetailPage() {
     }
   }
 
+  const handleCommitLabelColumnEdit = async () => {
+    const draft = labelColumnEdit?.trim() ?? ''
+    setLabelColumnEdit(null)
+    if (!draft || draft === labelColumnName || !id) return
+    setLabelColumnError(null)
+    try {
+      await apiClient.updateChoiceList(id, { label_column_name: draft })
+      setLabelColumnName(draft)
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err) && err.response?.data) {
+        const data = err.response.data
+        setLabelColumnError(data.error || data.detail || JSON.stringify(data))
+      } else {
+        setLabelColumnError('Failed to rename label column.')
+      }
+    }
+  }
+
   if (loading && !choiceList) {
     return <div className="flex items-center justify-center py-16 text-gray-400">Loading…</div>
   }
@@ -612,8 +638,8 @@ export default function ChoiceListDetailPage() {
         {importError && (
           <p className="px-5 py-2 text-red-600 text-sm bg-red-50 border-b border-red-100">Import failed: {importError}</p>
         )}
-        {columnError && (
-          <p className="px-5 py-2 text-red-600 text-sm bg-red-50 border-b border-red-100">{columnError}</p>
+        {(columnError || labelColumnError) && (
+          <p className="px-5 py-2 text-red-600 text-sm bg-red-50 border-b border-red-100">{columnError || labelColumnError}</p>
         )}
 
         {choices.length === 0 ? (
@@ -628,15 +654,40 @@ export default function ChoiceListDetailPage() {
                 <tr className="border-b border-gray-100 bg-gray-50">
                   <th className="px-3 py-3 w-8"></th>
                   <th className="px-5 py-3 text-left">
-                    <button
-                      onClick={() => handleSortClick('label')}
-                      className="flex items-center gap-1 font-semibold text-gray-600 hover:text-indigo-700 transition-colors"
-                    >
-                      Label
-                      <span className="text-xs w-4 text-center">
-                        {sortCol === 'label' ? (sortDir === 'asc' ? '↑' : '↓ ×') : <span className="text-gray-300">↕</span>}
-                      </span>
-                    </button>
+                    <div className="flex items-center gap-1 group">
+                      {labelColumnEdit !== null ? (
+                        <input
+                          autoFocus
+                          value={labelColumnEdit}
+                          onChange={e => setLabelColumnEdit(e.target.value)}
+                          onBlur={handleCommitLabelColumnEdit}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') handleCommitLabelColumnEdit()
+                            if (e.key === 'Escape') setLabelColumnEdit(null)
+                          }}
+                          className="border border-indigo-300 rounded px-2 py-0.5 text-sm w-40 focus:outline-none"
+                        />
+                      ) : (
+                        <button
+                          onClick={() => handleSortClick('label')}
+                          className="flex items-center gap-1 font-semibold text-gray-600 hover:text-indigo-700 transition-colors"
+                        >
+                          {labelColumnName}
+                          <span className="text-xs w-4 text-center">
+                            {sortCol === 'label' ? (sortDir === 'asc' ? '↑' : '↓ ×') : <span className="text-gray-300">↕</span>}
+                          </span>
+                        </button>
+                      )}
+                      {labelColumnEdit === null && (
+                        <button
+                          className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-indigo-600 text-xs ml-1 transition-opacity leading-none"
+                          title="Rename label column (e.g. label::English (en))"
+                          onClick={() => setLabelColumnEdit(labelColumnName)}
+                        >
+                          ✎
+                        </button>
+                      )}
+                    </div>
                   </th>
                   <th className="px-5 py-3 text-left">
                     <button

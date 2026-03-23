@@ -8,9 +8,11 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.authentication import BasicAuthentication
-from rest_framework.permissions import AllowAny
+from rest_framework.authentication import BasicAuthentication, SessionAuthentication
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.parsers import JSONParser, BaseParser
+from django.contrib.auth import authenticate, login, logout
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
 import shortuuid
@@ -35,11 +37,68 @@ from .serializers import (
 )
 
 
+class CSRFView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        get_token(request._request)
+        return Response({'detail': 'CSRF cookie set'})
+
+
+class LoginView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        username = request.data.get('username', '')
+        password = request.data.get('password', '')
+        if not username or not password:
+            return Response({'error': 'username and password are required'}, status=status.HTTP_400_BAD_REQUEST)
+        user = authenticate(request._request, username=username, password=password)
+        if user is None:
+            return Response({'error': 'Invalid username or password'}, status=status.HTTP_400_BAD_REQUEST)
+        login(request._request, user)
+        return Response({'id': user.id, 'username': user.username})
+
+
+class LogoutView(APIView):
+    def post(self, request):
+        logout(request._request)
+        return Response({'detail': 'Logged out'})
+
+
+class MeView(APIView):
+    def get(self, request):
+        return Response({'id': request.user.id, 'username': request.user.username})
+
+
+class ChangePasswordView(APIView):
+    def post(self, request):
+        old_password = request.data.get('old_password', '')
+        new_password = request.data.get('new_password', '')
+        if not old_password or not new_password:
+            return Response({'error': 'old_password and new_password are required'}, status=status.HTTP_400_BAD_REQUEST)
+        if not request.user.check_password(old_password):
+            return Response({'error': 'Current password is incorrect'}, status=status.HTTP_400_BAD_REQUEST)
+        request.user.set_password(new_password)
+        request.user.save()
+        updated_user = authenticate(request._request, username=request.user.username, password=new_password)
+        if updated_user:
+            login(request._request, updated_user)
+        return Response({'detail': 'Password changed successfully'})
+
+
 class ProjectViewSet(viewsets.ModelViewSet):
     """ViewSet for Project CRUD operations"""
-    queryset = Project.objects.all()
     serializer_class = ProjectSerializer
     lookup_field = 'slug'
+
+    def get_queryset(self):
+        return Project.objects.filter(owner=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self.request.user)
 
 
 class ChoiceListViewSet(viewsets.ModelViewSet):
@@ -55,7 +114,7 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         from django.db.models import Count
-        qs = super().get_queryset()
+        qs = ChoiceList.objects.filter(project__owner=self.request.user)
         if self.action == 'list':
             qs = qs.annotate(choices_count_annotation=Count('choices'))
         elif self.action in ('retrieve', 'export', 'import_csv'):
@@ -108,7 +167,7 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
         extra_cols = list(choice_list.columns.order_by('order', 'id'))
         output = StringIO()
         writer = csv.writer(output)
-        writer.writerow(['name', 'label'] + [col.name for col in extra_cols])
+        writer.writerow(['name', choice_list.label_column_name] + [col.name for col in extra_cols])
         for choice in choice_list.choices.prefetch_related('extra_values').order_by('order'):
             ev_map = {ev.column_id: ev.value for ev in choice.extra_values.all()}
             writer.writerow([choice.value, choice.label] + [ev_map.get(col.id, '') for col in extra_cols])
@@ -279,8 +338,12 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
 
 class ChoiceViewSet(viewsets.ModelViewSet):
     """ViewSet for Choice CRUD operations"""
-    queryset = Choice.objects.prefetch_related('extra_values').all()
     serializer_class = ChoiceSerializer
+
+    def get_queryset(self):
+        return Choice.objects.filter(
+            choice_list__project__owner=self.request.user
+        ).prefetch_related('extra_values')
 
     @action(detail=True, methods=['patch'], url_path='set_extra_value')
     def set_extra_value(self, request, pk=None):
@@ -327,7 +390,7 @@ class KoboCSVExportView(APIView):
             writer = csv.writer(output)
 
             extra_cols = list(choice_list.columns.order_by('order', 'id'))
-            writer.writerow(['name', 'label'] + [col.name for col in extra_cols])
+            writer.writerow(['name', choice_list.label_column_name] + [col.name for col in extra_cols])
 
             for choice in choice_list.choices.prefetch_related('extra_values').all():
                 ev_map = {ev.column_id: ev.value for ev in choice.extra_values.all()}

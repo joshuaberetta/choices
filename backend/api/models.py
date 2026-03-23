@@ -25,6 +25,11 @@ class ChoiceList(models.Model):
     slug = models.CharField(max_length=255, help_text="Choice list slug (e.g., fruits)")
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
+    label_column_name = models.CharField(
+        max_length=255,
+        default='label',
+        help_text="Column header used for the label in CSV export (e.g. 'label::English (en)')",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

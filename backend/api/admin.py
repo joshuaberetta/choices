@@ -4,12 +4,13 @@ from .models import Project, ChoiceList, Choice
 
 @admin.register(Project)
 class ProjectAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'created_at')
+    list_display = ('name', 'slug', 'owner', 'created_at')
     search_fields = ('name', 'slug')
+    list_filter = ('owner',)
     readonly_fields = ('created_at', 'updated_at')
     fieldsets = (
         ('Project Info', {
-            'fields': ('name', 'slug', 'description', 'created_at', 'updated_at')
+            'fields': ('name', 'slug', 'description', 'owner', 'created_at', 'updated_at')
         }),
     )
 
