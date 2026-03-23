@@ -1,6 +1,7 @@
 import csv
 import json
 import logging
+import re
 from io import StringIO
 
 logger = logging.getLogger('api')
@@ -153,7 +154,7 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
         if choice_list.choices.filter(label=label).exists():
             return Response({'error': 'A choice with this label already exists'}, status=status.HTTP_400_BAD_REQUEST)
 
-        value = shortuuid.ShortUUID().random(length=9)
+        value = _generate_choice_name(choice_list, label)
         choice = Choice.objects.create(choice_list=choice_list, label=label, value=value)
         _stamp_removed_false(choice, _ensure_removed_column(choice_list))
         _stamp_protected_false(choice, _ensure_protected_column(choice_list))
@@ -537,6 +538,32 @@ class KoboAddChoiceView(APIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+
+def _generate_choice_name(choice_list, label):
+    """Generate a choice value/name according to the choice list's name_generation setting."""
+    if choice_list.name_generation == 'from_label':
+        # Lowercase, replace spaces with underscores, strip non-latin/digit/underscore
+        base = label.lower()
+        base = base.replace(' ', '_')
+        base = re.sub(r'[^a-z0-9_]', '', base)
+        # Truncate to max length (if set)
+        if choice_list.name_max_length and len(base) > choice_list.name_max_length:
+            base = base[:choice_list.name_max_length].rstrip('_')
+        # Fall back to uuid if nothing usable remains
+        if not base:
+            return shortuuid.ShortUUID().random(length=9)
+        # Ensure uniqueness within this choice list
+        existing = set(choice_list.choices.values_list('value', flat=True))
+        if base not in existing:
+            return base
+        counter = 2
+        while True:
+            candidate = f'{base}_{counter}'
+            if candidate not in existing:
+                return candidate
+            counter += 1
+    return shortuuid.ShortUUID().random(length=9)
 
 
 def _bootstrap_system_columns(choice_list):

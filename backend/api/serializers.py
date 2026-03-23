@@ -41,7 +41,7 @@ class ChoiceListDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ChoiceList
-        fields = ['id', 'project', 'project_slug', 'project_name', 'slug', 'name', 'description', 'label_column_name', 'created_at', 'updated_at', 'columns', 'choices']
+        fields = ['id', 'project', 'project_slug', 'project_name', 'slug', 'name', 'description', 'label_column_name', 'name_generation', 'name_max_length', 'created_at', 'updated_at', 'columns', 'choices']
         read_only_fields = ['id', 'project_slug', 'project_name', 'created_at', 'updated_at']
 
 
@@ -58,7 +58,7 @@ class ChoiceListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ChoiceList
-        fields = ['id', 'project', 'project_slug', 'project_name', 'slug', 'name', 'description', 'label_column_name', 'created_at', 'updated_at', 'choices_count']
+        fields = ['id', 'project', 'project_slug', 'project_name', 'slug', 'name', 'description', 'label_column_name', 'name_generation', 'name_max_length', 'created_at', 'updated_at', 'choices_count']
         read_only_fields = ['id', 'project_slug', 'project_name', 'created_at', 'updated_at', 'choices_count']
 
 

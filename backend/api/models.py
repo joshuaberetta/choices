@@ -30,6 +30,20 @@ class ChoiceList(models.Model):
         default='label',
         help_text="Column header used for the label in CSV export (e.g. 'label::English (en)')",
     )
+    NAME_GENERATION_CHOICES = [
+        ('uuid', 'Random UUID'),
+        ('from_label', 'Derived from label'),
+    ]
+    name_generation = models.CharField(
+        max_length=20,
+        default='uuid',
+        choices=NAME_GENERATION_CHOICES,
+        help_text="How to auto-generate the choice name/value when adding a new choice",
+    )
+    name_max_length = models.PositiveIntegerField(
+        default=0,
+        help_text="Maximum length for label-derived names (0 = no limit)",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

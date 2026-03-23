@@ -259,6 +259,12 @@ export default function ChoiceListDetailPage() {
   const [labelColumnEdit, setLabelColumnEdit] = useState<string | null>(null)
   const [labelColumnError, setLabelColumnError] = useState<string | null>(null)
 
+  // Name generation settings
+  const [nameGeneration, setNameGeneration] = useState<'uuid' | 'from_label'>('uuid')
+  const [nameMaxLength, setNameMaxLength] = useState(0)
+  const [nameSettingsSaving, setNameSettingsSaving] = useState(false)
+  const [nameSettingsError, setNameSettingsError] = useState<string | null>(null)
+
   // Column rename state
   const [columnEdit, setColumnEdit] = useState<{ id: number; draft: string } | null>(null)
   // New column add state
@@ -280,6 +286,10 @@ export default function ChoiceListDetailPage() {
     }
     if (choiceList?.label_column_name) {
       setLabelColumnName(choiceList.label_column_name)
+    }
+    if (choiceList) {
+      setNameGeneration(choiceList.name_generation ?? 'uuid')
+      setNameMaxLength(choiceList.name_max_length ?? 0)
     }
   }, [choiceList])
 
@@ -369,6 +379,24 @@ export default function ChoiceListDetailPage() {
       }
     } finally {
       setAdding(false)
+    }
+  }
+
+  const handleSaveNameSettings = async () => {
+    if (!id) return
+    setNameSettingsSaving(true)
+    setNameSettingsError(null)
+    try {
+      await apiClient.updateChoiceList(id, { name_generation: nameGeneration, name_max_length: nameMaxLength })
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err) && err.response?.data) {
+        const data = err.response.data
+        setNameSettingsError(data.error || data.detail || JSON.stringify(data))
+      } else {
+        setNameSettingsError('Failed to save name settings.')
+      }
+    } finally {
+      setNameSettingsSaving(false)
     }
   }
 
@@ -570,6 +598,65 @@ export default function ChoiceListDetailPage() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Name generation settings */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-5">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Name generation</p>
+        <div className="flex flex-wrap items-start gap-5">
+          <div className="flex gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="nameGeneration"
+                value="uuid"
+                checked={nameGeneration === 'uuid'}
+                onChange={() => setNameGeneration('uuid')}
+                className="accent-indigo-600"
+              />
+              <span className="text-sm text-gray-700">Random ID</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="nameGeneration"
+                value="from_label"
+                checked={nameGeneration === 'from_label'}
+                onChange={() => setNameGeneration('from_label')}
+                className="accent-indigo-600"
+              />
+              <span className="text-sm text-gray-700">Derived from label</span>
+            </label>
+          </div>
+          {nameGeneration === 'from_label' && (
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600 whitespace-nowrap">Max length</label>
+              <input
+                type="number"
+                min={0}
+                value={nameMaxLength}
+                onChange={e => setNameMaxLength(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                className="border border-gray-300 rounded px-2 py-1 text-sm w-20 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <span className="text-xs text-gray-400">(0 = no limit)</span>
+            </div>
+          )}
+          <button
+            onClick={handleSaveNameSettings}
+            disabled={nameSettingsSaving}
+            className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          >
+            {nameSettingsSaving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+        {nameGeneration === 'from_label' && (
+          <p className="mt-2 text-xs text-gray-400">
+            Names are lowercased, spaces become underscores, and non-latin/digit characters are removed. Duplicates get a numeric suffix (_2, _3, …).
+          </p>
+        )}
+        {nameSettingsError && (
+          <p className="mt-2 text-red-600 text-sm">{nameSettingsError}</p>
+        )}
       </div>
 
       {/* Choices table */}

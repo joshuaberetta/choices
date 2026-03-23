@@ -48,6 +48,8 @@ export interface ChoiceList {
   name: string;
   description: string;
   label_column_name: string;
+  name_generation: 'uuid' | 'from_label';
+  name_max_length: number;
   created_at: string;
   updated_at: string;
   choices_count: number;
