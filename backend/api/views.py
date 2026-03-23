@@ -53,6 +53,18 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
             return ChoiceListDetailSerializer
         return ChoiceListSerializer
 
+    def retrieve(self, request, *args, **kwargs):
+        """Ensure system columns exist before returning the detail view."""
+        instance = self.get_object()
+        _bootstrap_system_columns(instance)
+        # Re-fetch with fresh prefetch after potential column/value creation
+        instance = ChoiceList.objects.prefetch_related(
+            'columns',
+            Prefetch('choices', queryset=Choice.objects.prefetch_related('extra_values')),
+        ).get(pk=instance.pk)
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
     def get_queryset(self):
         qs = super().get_queryset()
         if self.action in ('retrieve', 'export', 'import_csv'):
@@ -82,6 +94,8 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
         value = shortuuid.ShortUUID().random(length=9)
         choice = Choice.objects.create(choice_list=choice_list, label=label, value=value)
         _stamp_removed_false(choice, _ensure_removed_column(choice_list))
+        _stamp_protected_false(choice, _ensure_protected_column(choice_list))
+        _stamp_pin_empty(choice, _ensure_pin_column(choice_list))
         return Response(ChoiceSerializer(choice).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'], url_path='export')
@@ -135,7 +149,7 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
             )
 
         # Identify extra column names (anything beyond the standard set)
-        RESERVED = {id_col, 'name', 'value', 'label'}
+        RESERVED = {id_col, 'name', 'value', 'label', 'removed', 'protected', 'pin'}
         extra_col_names = [k for k in sample.keys() if k not in RESERVED]
 
         # Get or create ChoiceListColumn objects for each extra column
@@ -162,13 +176,24 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
         # If 'removed' was also in the CSV, col_map already has it; otherwise add it
         col_map.setdefault('removed', removed_col)
 
+        # Ensure the 'protected' column exists and stamp all new choices as protected=false
+        protected_col = _ensure_protected_column(choice_list)
+        col_map.setdefault('protected', protected_col)
+
+        # Ensure the 'pin' column exists and stamp all new choices as pin=false
+        pin_col = _ensure_pin_column(choice_list)
+        col_map.setdefault('pin', pin_col)
+
         # Create extra values for each new choice
         extra_values = []
         for choice, row in zip(created, valid_rows):
             for col_name, col in col_map.items():
-                v = row.get(col_name, '') if col_name != 'removed' else row.get('removed', 'false') or 'false'
-                # Always write the value (blank becomes empty string; 'removed' defaults to 'false')
-                if col_name == 'removed' or v:
+                if col_name in ('removed', 'protected', 'pin'):
+                    v = row.get(col_name, 'false') or 'false'
+                else:
+                    v = row.get(col_name, '')
+                # Always write the value (blank becomes empty string; system cols default to 'false')
+                if col_name in ('removed', 'protected', 'pin') or v:
                     extra_values.append(ChoiceExtraValue(choice=choice, column=col, value=v))
         if extra_values:
             ChoiceExtraValue.objects.bulk_create(extra_values)
@@ -191,7 +216,7 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
         name = (request.data.get('name') or '').strip()
         if not name:
             return Response({'error': 'name is required'}, status=status.HTTP_400_BAD_REQUEST)
-        if name.lower() in ('name', 'value', 'label'):
+        if name.lower() in ('name', 'value', 'label', 'removed', 'protected', 'pin'):
             return Response({'error': f'"{name}" is a reserved column name'}, status=status.HTTP_400_BAD_REQUEST)
         if choice_list.columns.filter(name=name).exists():
             return Response({'error': 'A column with this name already exists'}, status=status.HTTP_400_BAD_REQUEST)
@@ -207,9 +232,11 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
         new_name = (request.data.get('name') or '').strip()
         if not column_id or not new_name:
             return Response({'error': 'column_id and name are required'}, status=status.HTTP_400_BAD_REQUEST)
-        if new_name.lower() in ('name', 'value', 'label'):
+        if new_name.lower() in ('name', 'value', 'label', 'removed', 'protected', 'pin'):
             return Response({'error': f'"{new_name}" is a reserved column name'}, status=status.HTTP_400_BAD_REQUEST)
         column = get_object_or_404(ChoiceListColumn, id=column_id, choice_list=choice_list)
+        if column.name.lower() in ('removed', 'protected', 'pin'):
+            return Response({'error': f'"{column.name}" is a system column and cannot be renamed'}, status=status.HTTP_400_BAD_REQUEST)
         if choice_list.columns.filter(name=new_name).exclude(pk=column.pk).exists():
             return Response({'error': 'A column with this name already exists'}, status=status.HTTP_400_BAD_REQUEST)
         column.name = new_name
@@ -224,6 +251,8 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
         if not column_id:
             return Response({'error': 'column_id is required'}, status=status.HTTP_400_BAD_REQUEST)
         column = get_object_or_404(ChoiceListColumn, id=column_id, choice_list=choice_list)
+        if column.name.lower() in ('removed', 'protected', 'pin'):
+            return Response({'error': f'"{column.name}" is a system column and cannot be deleted'}, status=status.HTTP_400_BAD_REQUEST)
         column.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -403,14 +432,27 @@ class KoboAddChoiceView(APIView):
                 value=value,
             )
 
-            # Re-sort all choices in the list alphabetically and reassign order
-            all_choices = list(Choice.objects.filter(choice_list=choice_list))
-            all_choices.sort(key=lambda c: c.label.lower())
-            for i, c in enumerate(all_choices):
+            # Re-sort all choices in the list alphabetically; pin=true choices go to the end
+            all_choices = list(
+                Choice.objects.filter(choice_list=choice_list).prefetch_related('extra_values')
+            )
+            pin_col = choice_list.columns.filter(name='pin').first()
+            def _is_pinned(c):
+                if pin_col is None:
+                    return False
+                return any(
+                    ev.column_id == pin_col.id and ev.value == 'true'
+                    for ev in c.extra_values.all()
+                )
+            unpinned = sorted([c for c in all_choices if not _is_pinned(c)], key=lambda c: c.label.lower())
+            pinned = sorted([c for c in all_choices if _is_pinned(c)], key=lambda c: c.order)
+            for i, c in enumerate(unpinned + pinned):
                 c.order = i
             Choice.objects.bulk_update(all_choices, ['order'])
             choice.refresh_from_db()
             _stamp_removed_false(choice, _ensure_removed_column(choice_list))
+            _stamp_protected_false(choice, _ensure_protected_column(choice_list))
+            _stamp_pin_empty(choice, _ensure_pin_column(choice_list))
 
             logger.info('ADD success | label=%r value=%s order=%d | project=%s list=%s', label, value, choice.order, project_id, choice_list_name)
             return Response({
@@ -431,6 +473,18 @@ class KoboAddChoiceView(APIView):
             )
 
 
+def _bootstrap_system_columns(choice_list):
+    """Ensure removed, protected, and pin columns exist for a choice list and
+    stamp any choices that are missing values for them."""
+    removed_col = _ensure_removed_column(choice_list)
+    protected_col = _ensure_protected_column(choice_list)
+    pin_col = _ensure_pin_column(choice_list)
+    for choice in choice_list.choices.prefetch_related('extra_values').all():
+        _stamp_removed_false(choice, removed_col)
+        _stamp_protected_false(choice, protected_col)
+        _stamp_pin_empty(choice, pin_col)
+
+
 def _ensure_removed_column(choice_list):
     """Get or create the 'removed' column for a choice list."""
     col, _ = ChoiceListColumn.objects.get_or_create(
@@ -448,6 +502,52 @@ def _stamp_removed_false(choice, removed_col):
         column=removed_col,
         defaults={'value': 'false'},
     )
+
+
+def _ensure_protected_column(choice_list):
+    """Get or create the 'protected' column for a choice list."""
+    col, _ = ChoiceListColumn.objects.get_or_create(
+        choice_list=choice_list,
+        name='protected',
+        defaults={'order': choice_list.columns.count()},
+    )
+    return col
+
+
+def _stamp_protected_false(choice, protected_col):
+    """Ensure this choice has protected=false (creates the row if missing)."""
+    ChoiceExtraValue.objects.get_or_create(
+        choice=choice,
+        column=protected_col,
+        defaults={'value': 'false'},
+    )
+
+
+def _ensure_pin_column(choice_list):
+    """Get or create the 'pin' column for a choice list."""
+    col, _ = ChoiceListColumn.objects.get_or_create(
+        choice_list=choice_list,
+        name='pin',
+        defaults={'order': choice_list.columns.count()},
+    )
+    return col
+
+
+def _stamp_pin_empty(choice, pin_col):
+    """Ensure this choice has pin=false (creates the row if missing)."""
+    ChoiceExtraValue.objects.get_or_create(
+        choice=choice,
+        column=pin_col,
+        defaults={'value': 'false'},
+    )
+
+
+def _is_protected(choice, choice_list):
+    """Return True if this choice has protected=true."""
+    protected_col = choice_list.columns.filter(name='protected').first()
+    if protected_col is None:
+        return False
+    return choice.extra_values.filter(column=protected_col, value='true').exists()
 
 
 def _extract_kobo_value(request):
@@ -495,6 +595,14 @@ class KoboRemoveChoiceView(APIView):
                 logger.info('REMOVE (soft) idempotent - not found | value=%r | project=%s list=%s',
                             value, project_id, choice_list_name)
                 return Response({'success': True, 'message': 'Choice not found (already removed)', 'value': value})
+
+            # Block soft-deletion of protected choices
+            choice_with_evs = choice_list.choices.prefetch_related('extra_values').get(pk=choice.pk)
+            if _is_protected(choice_with_evs, choice_list):
+                logger.warning('REMOVE (soft) blocked - protected | value=%r label=%r | project=%s list=%s',
+                               value, choice.label, project_id, choice_list_name)
+                return Response({'success': False, 'message': 'Choice is protected and cannot be soft-deleted'},
+                                status=status.HTTP_403_FORBIDDEN)
 
             removed_col = _ensure_removed_column(choice_list)
             ChoiceExtraValue.objects.update_or_create(

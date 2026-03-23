@@ -114,6 +114,11 @@ function SortableChoiceRow({
   const [edit, setEdit] = useState<EditTarget | null>(null)
   const [saving, setSaving] = useState(false)
 
+  const SYSTEM_BOOL_COLS = ['protected', 'removed', 'pin']
+
+  const isProtected = columns.some(col => col.name === 'protected' &&
+    choice.extra_values.find(ev => ev.column === col.id)?.value === 'true')
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -135,8 +140,15 @@ function SortableChoiceRow({
     }
   }
 
+  const handleToggle = async (colId: number, checked: boolean) => {
+    setSaving(true)
+    try { await onSaveExtra(choice.id, colId, checked ? 'true' : 'false') } finally { setSaving(false) }
+  }
+
   return (
-    <tr ref={setNodeRef} style={style} className="border-b border-gray-50 last:border-b-0 bg-white hover:bg-gray-50 transition-colors">
+    <tr ref={setNodeRef} style={style} className={`border-b border-gray-50 last:border-b-0 transition-colors ${
+      isProtected ? 'bg-amber-50 hover:bg-amber-100' : 'bg-white hover:bg-gray-50'
+    }`}>
       <td className="px-3 py-3 text-gray-300 w-8">
         <span
           className="cursor-grab active:cursor-grabbing select-none text-lg leading-none"
@@ -174,6 +186,21 @@ function SortableChoiceRow({
       {/* Extra columns */}
       {columns.map(col => {
         const ev = choice.extra_values.find((e: ChoiceExtraValue) => e.column === col.id)
+        if (SYSTEM_BOOL_COLS.includes(col.name)) {
+          const checked = ev?.value === 'true'
+          return (
+            <td key={col.id} className="px-5 py-3 text-center">
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={saving}
+                onChange={e => handleToggle(col.id, e.target.checked)}
+                className="w-4 h-4 rounded accent-indigo-600 cursor-pointer disabled:cursor-not-allowed"
+                title={`${col.name}: ${checked ? 'true' : 'false'}`}
+              />
+            </td>
+          )
+        }
         const val = (edit?.kind === 'extra' && edit.columnId === col.id) ? edit.draft : (ev?.value ?? '')
         return (
           <td key={col.id} className="px-5 py-3 min-w-[8rem]">
@@ -192,12 +219,21 @@ function SortableChoiceRow({
       })}
       <td className="px-5 py-3 text-gray-400">{choice.order}</td>
       <td className="px-5 py-3 text-right">
-        <button
-          onClick={() => onDelete(choice.id)}
-          className="px-2.5 py-1 text-xs text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
-        >
-          Delete
-        </button>
+        {isProtected ? (
+          <span
+            className="px-2.5 py-1 text-xs text-amber-600 border border-amber-200 rounded-lg bg-amber-50 cursor-not-allowed select-none"
+            title="This choice is protected and cannot be deleted"
+          >
+            🔒 Protected
+          </span>
+        ) : (
+          <button
+            onClick={() => onDelete(choice.id)}
+            className="px-2.5 py-1 text-xs text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+          >
+            Delete
+          </button>
+        )}
       </td>
     </tr>
   )
@@ -250,12 +286,20 @@ export default function ChoiceListDetailPage() {
     setSortCol(col)
     setSortDir(newDir)
 
-    const sorted = [...choices]
-      .sort((a, b) =>
-        a[col].localeCompare(b[col], undefined, { numeric: true, sensitivity: 'base' }) *
-        (newDir === 'asc' ? 1 : -1)
-      )
-      .map((c, i) => ({ ...c, order: i }))
+    // Pin=true choices always stay at the end in their original relative order
+    const pinCol = columns.find(c => c.name === 'pin')
+    const isPinned = (c: Choice) =>
+      pinCol ? c.extra_values.find(ev => ev.column === pinCol.id)?.value === 'true' : false
+
+    const unpinned = choices.filter(c => !isPinned(c))
+    const pinned = choices.filter(c => isPinned(c))
+
+    const sortedUnpinned = [...unpinned].sort((a, b) =>
+      a[col].localeCompare(b[col], undefined, { numeric: true, sensitivity: 'base' }) *
+      (newDir === 'asc' ? 1 : -1)
+    )
+
+    const sorted = [...sortedUnpinned, ...pinned].map((c, i) => ({ ...c, order: i }))
 
     setChoices(sorted)
     try {
@@ -606,10 +650,12 @@ export default function ChoiceListDetailPage() {
                     </button>
                   </th>
                   {/* Extra column headers */}
-                  {columns.map(col => (
+                  {columns.map(col => {
+                    const isSystem = col.name === 'protected' || col.name === 'removed'
+                    return (
                     <th key={col.id} className="px-5 py-3 text-left min-w-[8rem]">
                       <div className="flex items-center gap-1 group">
-                        {columnEdit?.id === col.id ? (
+                        {!isSystem && columnEdit?.id === col.id ? (
                           <input
                             autoFocus
                             value={columnEdit.draft}
@@ -623,23 +669,30 @@ export default function ChoiceListDetailPage() {
                           />
                         ) : (
                           <span
-                            className="font-semibold text-gray-600 cursor-pointer hover:text-indigo-700 transition-colors"
-                            title="Click to rename"
-                            onClick={() => setColumnEdit({ id: col.id, draft: col.name })}
+                            className={`font-semibold text-gray-600 transition-colors ${
+                              isSystem
+                                ? 'cursor-default text-indigo-700'
+                                : 'cursor-pointer hover:text-indigo-700'
+                            }`}
+                            title={isSystem ? `System column (${col.name})` : 'Click to rename'}
+                            onClick={() => !isSystem && setColumnEdit({ id: col.id, draft: col.name })}
                           >
-                            {col.name}
+                            {col.name === 'protected' ? '🔒 ' : col.name === 'removed' ? '🗑 ' : col.name === 'pin' ? '📌 ' : ''}{col.name}
                           </span>
                         )}
-                        <button
-                          className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-xs ml-1 transition-opacity leading-none"
-                          title="Delete column"
-                          onClick={() => handleDeleteColumn(col.id)}
-                        >
-                          ✕
-                        </button>
+                        {!isSystem && (
+                          <button
+                            className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-xs ml-1 transition-opacity leading-none"
+                            title="Delete column"
+                            onClick={() => handleDeleteColumn(col.id)}
+                          >
+                            ✕
+                          </button>
+                        )}
                       </div>
                     </th>
-                  ))}
+                    )
+                  })}
                   <th className="px-5 py-3 text-left font-semibold text-gray-600">Order</th>
                   <th className="px-5 py-3"></th>
                 </tr>
