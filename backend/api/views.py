@@ -287,13 +287,13 @@ class KoboCSVExportView(APIView):
             # Create CSV in memory
             output = StringIO()
             writer = csv.writer(output)
-            
-            # Write header row
-            writer.writerow(['name', 'label'])
-            
-            # Write choice rows
-            for choice in choice_list.choices.all():
-                writer.writerow([choice.value, choice.label])
+
+            extra_cols = list(choice_list.columns.order_by('order', 'id'))
+            writer.writerow(['name', 'label'] + [col.name for col in extra_cols])
+
+            for choice in choice_list.choices.prefetch_related('extra_values').all():
+                ev_map = {ev.column_id: ev.value for ev in choice.extra_values.all()}
+                writer.writerow([choice.value, choice.label] + [ev_map.get(col.id, '') for col in extra_cols])
             
             # Return CSV response
             response = HttpResponse(output.getvalue(), content_type='text/csv')
