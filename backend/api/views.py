@@ -211,7 +211,11 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
 
         sample = rows[0]
         id_col = 'name' if 'name' in sample else ('value' if 'value' in sample else None)
-        if not id_col or 'label' not in sample:
+        # Accept exact 'label' or any XLSForm-style translation column (e.g. 'label::english (en)')
+        label_col = 'label' if 'label' in sample else next(
+            (k for k in sample if k.startswith('label')), None
+        )
+        if not id_col or not label_col:
             found = list(sample.keys())
             return Response(
                 {'error': f'CSV must have a "name" (or "value") column and a "label" column. Found columns: {found}'},
@@ -219,7 +223,7 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
             )
 
         # Identify extra column names (anything beyond the standard set)
-        RESERVED = {id_col, 'name', 'value', 'label', 'removed', 'protected', 'pin'}
+        RESERVED = {id_col, 'name', 'value', label_col, 'label', 'removed', 'protected', 'pin'}
         extra_col_names = [k for k in sample.keys() if k not in RESERVED]
 
         # Get or create ChoiceListColumn objects for each extra column
@@ -234,9 +238,9 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
 
         # Replace all choices
         choice_list.choices.all().delete()
-        valid_rows = [row for row in rows if row.get(id_col) and row.get('label')]
+        valid_rows = [row for row in rows if row.get(id_col) and row.get(label_col)]
         new_choices = [
-            Choice(choice_list=choice_list, value=row[id_col], label=row['label'], order=i)
+            Choice(choice_list=choice_list, value=row[id_col], label=row[label_col], order=i)
             for i, row in enumerate(valid_rows)
         ]
         created = Choice.objects.bulk_create(new_choices)
