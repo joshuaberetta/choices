@@ -23,12 +23,15 @@ class PlainTextJSONParser(BaseParser):
     def parse(self, stream, media_type=None, parser_context=None):
         return json.loads(stream.read().decode('utf-8'))
 
-from .models import Project, ChoiceList, Choice
+from django.db.models import Prefetch
+from .models import Project, ChoiceList, Choice, ChoiceListColumn, ChoiceExtraValue
 from .serializers import (
     ProjectSerializer,
     ChoiceListSerializer,
     ChoiceListDetailSerializer,
     ChoiceSerializer,
+    ChoiceListColumnSerializer,
+    ChoiceExtraValueSerializer,
 )
 
 
@@ -43,19 +46,29 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
     """ViewSet for ChoiceList CRUD operations"""
     queryset = ChoiceList.objects.all()
     serializer_class = ChoiceListSerializer
-    
+
     def get_serializer_class(self):
         """Use detailed serializer for retrieve action"""
         if self.action == 'retrieve':
             return ChoiceListDetailSerializer
         return ChoiceListSerializer
-    
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.action in ('retrieve', 'export', 'import_csv'):
+            qs = qs.prefetch_related(
+                'columns',
+                Prefetch('choices', queryset=Choice.objects.prefetch_related('extra_values')),
+            )
+        return qs
+
     @action(detail=True, methods=['get', 'post'])
     def choices(self, request, pk=None):
         choice_list = self.get_object()
 
         if request.method == 'GET':
-            serializer = ChoiceSerializer(choice_list.choices.all(), many=True)
+            qs = choice_list.choices.prefetch_related('extra_values').all()
+            serializer = ChoiceSerializer(qs, many=True)
             return Response(serializer.data)
 
         # POST: create a new choice
@@ -72,20 +85,26 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'], url_path='export')
     def export(self, request, pk=None):
-        """Export choices as CSV. Accessible via /api/choice-lists/{id}/export/"""
+        """Export choices as CSV including any extra columns."""
         choice_list = self.get_object()
+        extra_cols = list(choice_list.columns.order_by('order', 'id'))
         output = StringIO()
         writer = csv.writer(output)
-        writer.writerow(['name', 'label'])
-        for choice in choice_list.choices.order_by('order'):
-            writer.writerow([choice.value, choice.label])
+        writer.writerow(['name', 'label'] + [col.name for col in extra_cols])
+        for choice in choice_list.choices.prefetch_related('extra_values').order_by('order'):
+            ev_map = {ev.column_id: ev.value for ev in choice.extra_values.all()}
+            writer.writerow([choice.value, choice.label] + [ev_map.get(col.id, '') for col in extra_cols])
         response = HttpResponse(output.getvalue(), content_type='text/csv')
         response['Content-Disposition'] = f'attachment; filename="{choice_list.slug}.csv"'
         return response
 
     @action(detail=True, methods=['post'], url_path='import')
     def import_csv(self, request, pk=None):
-        """Replace all choices from an uploaded CSV (columns: name/value, label)."""
+        """Replace all choices from an uploaded CSV.
+
+        Required columns: name (or value), label.
+        Any additional columns are treated as extra columns and created/updated on the choice list.
+        """
         choice_list = self.get_object()
         uploaded = request.FILES.get('file')
         if not uploaded:
@@ -95,7 +114,6 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
             dialect = csv.Sniffer().sniff(text[:2048], delimiters=',;\t|')
             reader = csv.DictReader(StringIO(text), dialect=dialect)
             raw_rows = list(reader)
-            # Normalise headers: strip whitespace and lowercase
             rows = [
                 {k.strip().lower(): (v.strip() if v else '') for k, v in row.items()}
                 for row in raw_rows
@@ -106,7 +124,6 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
         if not rows:
             return Response({'error': 'CSV file is empty'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Accept 'name' or 'value' as the ID column
         sample = rows[0]
         id_col = 'name' if 'name' in sample else ('value' if 'value' in sample else None)
         if not id_col or 'label' not in sample:
@@ -116,20 +133,93 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        choice_list.choices.all().delete()
-        new_choices = [
-            Choice(
+        # Identify extra column names (anything beyond the standard set)
+        RESERVED = {id_col, 'name', 'value', 'label'}
+        extra_col_names = [k for k in sample.keys() if k not in RESERVED]
+
+        # Get or create ChoiceListColumn objects for each extra column
+        col_map = {}  # normalised name -> ChoiceListColumn
+        for col_name in extra_col_names:
+            col, _ = ChoiceListColumn.objects.get_or_create(
                 choice_list=choice_list,
-                value=row[id_col],
-                label=row['label'],
-                order=i,
+                name=col_name,
+                defaults={'order': choice_list.columns.count()},
             )
-            for i, row in enumerate(rows)
-            if row.get(id_col) and row.get('label')
+            col_map[col_name] = col
+
+        # Replace all choices
+        choice_list.choices.all().delete()
+        valid_rows = [row for row in rows if row.get(id_col) and row.get('label')]
+        new_choices = [
+            Choice(choice_list=choice_list, value=row[id_col], label=row['label'], order=i)
+            for i, row in enumerate(valid_rows)
         ]
-        Choice.objects.bulk_create(new_choices)
-        serializer = ChoiceListDetailSerializer(choice_list)
+        created = Choice.objects.bulk_create(new_choices)
+
+        # Create extra values for each new choice
+        if col_map:
+            extra_values = []
+            for choice, row in zip(created, valid_rows):
+                for col_name, col in col_map.items():
+                    v = row.get(col_name, '')
+                    if v:  # only persist non-blank values
+                        extra_values.append(ChoiceExtraValue(choice=choice, column=col, value=v))
+            if extra_values:
+                ChoiceExtraValue.objects.bulk_create(extra_values)
+
+        # Re-fetch with prefetch to return accurate serialized data
+        choice_list.refresh_from_db()
+        choice_list_fresh = ChoiceList.objects.prefetch_related(
+            'columns',
+            Prefetch('choices', queryset=Choice.objects.prefetch_related('extra_values')),
+        ).get(pk=choice_list.pk)
+        serializer = ChoiceListDetailSerializer(choice_list_fresh)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    # ------------------------------------------------------------------ columns
+
+    @action(detail=True, methods=['post'], url_path='add_column')
+    def add_column(self, request, pk=None):
+        """Add a named extra column to this choice list."""
+        choice_list = self.get_object()
+        name = (request.data.get('name') or '').strip()
+        if not name:
+            return Response({'error': 'name is required'}, status=status.HTTP_400_BAD_REQUEST)
+        if name.lower() in ('name', 'value', 'label'):
+            return Response({'error': f'"{name}" is a reserved column name'}, status=status.HTTP_400_BAD_REQUEST)
+        if choice_list.columns.filter(name=name).exists():
+            return Response({'error': 'A column with this name already exists'}, status=status.HTTP_400_BAD_REQUEST)
+        order = choice_list.columns.count()
+        column = ChoiceListColumn.objects.create(choice_list=choice_list, name=name, order=order)
+        return Response(ChoiceListColumnSerializer(column).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['patch'], url_path='update_column')
+    def update_column(self, request, pk=None):
+        """Rename an extra column."""
+        choice_list = self.get_object()
+        column_id = request.data.get('column_id')
+        new_name = (request.data.get('name') or '').strip()
+        if not column_id or not new_name:
+            return Response({'error': 'column_id and name are required'}, status=status.HTTP_400_BAD_REQUEST)
+        if new_name.lower() in ('name', 'value', 'label'):
+            return Response({'error': f'"{new_name}" is a reserved column name'}, status=status.HTTP_400_BAD_REQUEST)
+        column = get_object_or_404(ChoiceListColumn, id=column_id, choice_list=choice_list)
+        if choice_list.columns.filter(name=new_name).exclude(pk=column.pk).exists():
+            return Response({'error': 'A column with this name already exists'}, status=status.HTTP_400_BAD_REQUEST)
+        column.name = new_name
+        column.save()
+        return Response(ChoiceListColumnSerializer(column).data)
+
+    @action(detail=True, methods=['delete'], url_path='remove_column')
+    def remove_column(self, request, pk=None):
+        """Delete an extra column (and all its values)."""
+        choice_list = self.get_object()
+        column_id = request.data.get('column_id')
+        if not column_id:
+            return Response({'error': 'column_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+        column = get_object_or_404(ChoiceListColumn, id=column_id, choice_list=choice_list)
+        column.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=['post'])
     def reorder(self, request, pk=None):
@@ -151,8 +241,23 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
 
 class ChoiceViewSet(viewsets.ModelViewSet):
     """ViewSet for Choice CRUD operations"""
-    queryset = Choice.objects.all()
+    queryset = Choice.objects.prefetch_related('extra_values').all()
     serializer_class = ChoiceSerializer
+
+    @action(detail=True, methods=['patch'], url_path='set_extra_value')
+    def set_extra_value(self, request, pk=None):
+        """Create or update an extra column value for this choice."""
+        choice = self.get_object()
+        column_id = request.data.get('column_id')
+        value = request.data.get('value', '')
+        if column_id is None:
+            return Response({'error': 'column_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+        column = get_object_or_404(ChoiceListColumn, id=column_id, choice_list=choice.choice_list)
+        ev, _ = ChoiceExtraValue.objects.update_or_create(
+            choice=choice, column=column,
+            defaults={'value': value},
+        )
+        return Response(ChoiceExtraValueSerializer(ev).data)
 
 
 class KoboCSVExportView(APIView):

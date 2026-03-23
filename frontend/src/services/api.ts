@@ -35,7 +35,21 @@ export interface ChoiceList {
   description: string;
   created_at: string;
   updated_at: string;
+  columns?: ChoiceListColumn[];
   choices?: Choice[];
+}
+
+export interface ChoiceListColumn {
+  id: number;
+  name: string;
+  order: number;
+}
+
+export interface ChoiceExtraValue {
+  id: number;
+  column: number;
+  column_name: string;
+  value: string;
 }
 
 export interface Choice {
@@ -45,6 +59,7 @@ export interface Choice {
   label: string;
   order: number;
   created_at: string;
+  extra_values: ChoiceExtraValue[];
 }
 
 const apiClient = {
@@ -77,6 +92,18 @@ const apiClient = {
     form.append('file', file)
     return API.post<ChoiceList>(`/choice-lists/${listId}/import/`, form)
   },
+
+  // Extra columns
+  addColumn: (listId: string | number, name: string) =>
+    API.post<ChoiceListColumn>(`/choice-lists/${listId}/add_column/`, { name }),
+  updateColumn: (listId: string | number, columnId: number, name: string) =>
+    API.patch<ChoiceListColumn>(`/choice-lists/${listId}/update_column/`, { column_id: columnId, name }),
+  removeColumn: (listId: string | number, columnId: number) =>
+    API.delete(`/choice-lists/${listId}/remove_column/`, { data: { column_id: columnId } }),
+
+  // Extra column cell values
+  setExtraValue: (choiceId: number, columnId: number, value: string) =>
+    API.patch<ChoiceExtraValue>(`/choices/${choiceId}/set_extra_value/`, { column_id: columnId, value }),
 };
 
 export default apiClient;

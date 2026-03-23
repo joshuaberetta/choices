@@ -17,20 +17,101 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useChoiceList } from '../hooks/useChoiceLists'
-import apiClient, { type Choice } from '../services/api'
+import apiClient, { type Choice, type ChoiceListColumn, type ChoiceExtraValue } from '../services/api'
+
+// --------------------------------------------------------------------------
+// Helpers
+// --------------------------------------------------------------------------
+
+type EditTarget =
+  | { kind: 'field'; field: 'label' | 'value'; draft: string }
+  | { kind: 'extra'; columnId: number; draft: string }
+
+function EditableCell({
+  value,
+  saving,
+  editing,
+  onStart,
+  onDraftChange,
+  onCommit,
+  onCancel,
+  mono,
+  placeholder,
+}: {
+  value: string
+  saving: boolean
+  editing: boolean
+  onStart: () => void
+  onDraftChange: (v: string) => void
+  onCommit: () => void
+  onCancel: () => void
+  mono?: boolean
+  placeholder?: string
+}) {
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        value={value}
+        onChange={e => onDraftChange(e.target.value)}
+        onBlur={onCommit}
+        onKeyDown={e => {
+          if (e.key === 'Enter') onCommit()
+          if (e.key === 'Escape') onCancel()
+        }}
+        disabled={saving}
+        className={`border border-indigo-300 rounded px-2 py-0.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full ${
+          mono ? 'font-mono text-xs' : ''
+        }`}
+      />
+    )
+  }
+  if (mono) {
+    return (
+      <code
+        className="font-mono text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded cursor-pointer hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+        title="Click to edit value"
+        onClick={onStart}
+      >
+        {value}
+      </code>
+    )
+  }
+  return (
+    <span
+      className={`cursor-pointer ${
+        value
+          ? 'text-gray-900 hover:text-indigo-700 underline decoration-dotted underline-offset-2'
+          : 'text-gray-300 hover:text-indigo-400 italic'
+      }`}
+      title={placeholder ? `Click to edit (${placeholder})` : 'Click to edit'}
+      onClick={onStart}
+    >
+      {value || (placeholder ? placeholder : '—')}
+    </span>
+  )
+}
+
+// --------------------------------------------------------------------------
+// SortableChoiceRow
+// --------------------------------------------------------------------------
 
 function SortableChoiceRow({
   choice,
+  columns,
   onDelete,
   onSave,
+  onSaveExtra,
 }: {
   choice: Choice
+  columns: ChoiceListColumn[]
   onDelete: (id: number) => void
   onSave: (id: number, field: 'label' | 'value', value: string) => Promise<void>
+  onSaveExtra: (id: number, columnId: number, value: string) => Promise<void>
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: choice.id })
-  const [edit, setEdit] = useState<{ field: 'label' | 'value'; draft: string } | null>(null)
+  const [edit, setEdit] = useState<EditTarget | null>(null)
   const [saving, setSaving] = useState(false)
 
   const style = {
@@ -39,29 +120,19 @@ function SortableChoiceRow({
     opacity: isDragging ? 0.5 : 1,
   }
 
-  const startEdit = (field: 'label' | 'value') => {
-    setEdit({ field, draft: field === 'label' ? choice.label : choice.value })
-  }
-
   const commitEdit = async () => {
     if (!edit) return
-    const current = edit.field === 'label' ? choice.label : choice.value
-    if (edit.draft === current || !edit.draft.trim()) {
-      setEdit(null)
-      return
+    if (edit.kind === 'field') {
+      const current = edit.field === 'label' ? choice.label : choice.value
+      if (edit.draft === current || !edit.draft.trim()) { setEdit(null); return }
+      setSaving(true)
+      try { await onSave(choice.id, edit.field, edit.draft.trim()) } finally { setSaving(false); setEdit(null) }
+    } else {
+      const currentEv = choice.extra_values.find(ev => ev.column === edit.columnId)
+      if (edit.draft === (currentEv?.value ?? '')) { setEdit(null); return }
+      setSaving(true)
+      try { await onSaveExtra(choice.id, edit.columnId, edit.draft) } finally { setSaving(false); setEdit(null) }
     }
-    setSaving(true)
-    try {
-      await onSave(choice.id, edit.field, edit.draft.trim())
-    } finally {
-      setSaving(false)
-      setEdit(null)
-    }
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') commitEdit()
-    if (e.key === 'Escape') setEdit(null)
   }
 
   return (
@@ -75,48 +146,50 @@ function SortableChoiceRow({
           ⠿
         </span>
       </td>
+      {/* Label */}
       <td className="px-5 py-3">
-        {edit?.field === 'label' ? (
-          <input
-            autoFocus
-            value={edit.draft}
-            onChange={e => setEdit({ ...edit, draft: e.target.value })}
-            onBlur={commitEdit}
-            onKeyDown={handleKeyDown}
-            disabled={saving}
-            className="border border-indigo-300 rounded px-2 py-0.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full"
-          />
-        ) : (
-          <span
-            className="cursor-pointer text-gray-900 hover:text-indigo-700 underline decoration-dotted underline-offset-2"
-            title="Click to edit label"
-            onClick={() => startEdit('label')}
-          >
-            {choice.label}
-          </span>
-        )}
+        <EditableCell
+          value={edit?.kind === 'field' && edit.field === 'label' ? edit.draft : choice.label}
+          saving={saving}
+          editing={edit?.kind === 'field' && edit.field === 'label'}
+          onStart={() => setEdit({ kind: 'field', field: 'label', draft: choice.label })}
+          onDraftChange={v => setEdit({ kind: 'field', field: 'label', draft: v })}
+          onCommit={commitEdit}
+          onCancel={() => setEdit(null)}
+        />
       </td>
+      {/* Value */}
       <td className="px-5 py-3">
-        {edit?.field === 'value' ? (
-          <input
-            autoFocus
-            value={edit.draft}
-            onChange={e => setEdit({ ...edit, draft: e.target.value })}
-            onBlur={commitEdit}
-            onKeyDown={handleKeyDown}
-            disabled={saving}
-            className="font-mono text-xs border border-indigo-300 rounded px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-32"
-          />
-        ) : (
-          <code
-            className="font-mono text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded cursor-pointer hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
-            title="Click to edit value"
-            onClick={() => startEdit('value')}
-          >
-            {choice.value}
-          </code>
-        )}
+        <EditableCell
+          value={edit?.kind === 'field' && edit.field === 'value' ? edit.draft : choice.value}
+          saving={saving}
+          editing={edit?.kind === 'field' && edit.field === 'value'}
+          onStart={() => setEdit({ kind: 'field', field: 'value', draft: choice.value })}
+          onDraftChange={v => setEdit({ kind: 'field', field: 'value', draft: v })}
+          onCommit={commitEdit}
+          onCancel={() => setEdit(null)}
+          mono
+        />
       </td>
+      {/* Extra columns */}
+      {columns.map(col => {
+        const ev = choice.extra_values.find((e: ChoiceExtraValue) => e.column === col.id)
+        const val = (edit?.kind === 'extra' && edit.columnId === col.id) ? edit.draft : (ev?.value ?? '')
+        return (
+          <td key={col.id} className="px-5 py-3 min-w-[8rem]">
+            <EditableCell
+              value={val}
+              saving={saving}
+              editing={edit?.kind === 'extra' && edit.columnId === col.id}
+              onStart={() => setEdit({ kind: 'extra', columnId: col.id, draft: ev?.value ?? '' })}
+              onDraftChange={v => setEdit({ kind: 'extra', columnId: col.id, draft: v })}
+              onCommit={commitEdit}
+              onCancel={() => setEdit(null)}
+              placeholder="blank"
+            />
+          </td>
+        )
+      })}
       <td className="px-5 py-3 text-gray-400">{choice.order}</td>
       <td className="px-5 py-3 text-right">
         <button
@@ -138,21 +211,35 @@ export default function ChoiceListDetailPage() {
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
   const [choices, setChoices] = useState<Choice[]>([])
+  const [columns, setColumns] = useState<ChoiceListColumn[]>([])
   const [sortCol, setSortCol] = useState<'label' | 'value' | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
 
+  // Column rename state
+  const [columnEdit, setColumnEdit] = useState<{ id: number; draft: string } | null>(null)
+  // New column add state
+  const [addingColumn, setAddingColumn] = useState(false)
+  const [newColumnName, setNewColumnName] = useState('')
+  const [columnError, setColumnError] = useState<string | null>(null)
+
   useEffect(() => {
     if (choiceList?.choices) {
-      setChoices([...choiceList.choices].sort((a, b) => a.order - b.order))
+      setChoices(
+        [...choiceList.choices]
+          .sort((a, b) => a.order - b.order)
+          .map(c => ({ ...c, extra_values: c.extra_values ?? [] }))
+      )
+    }
+    if (choiceList?.columns) {
+      setColumns(choiceList.columns)
     }
   }, [choiceList])
 
   const sensors = useSensors(useSensor(PointerSensor))
 
   const handleSortClick = async (col: 'label' | 'value') => {
-    // Cycle: unsorted → asc → desc → unsorted (drag re-enabled)
     if (sortCol === col && sortDir === 'desc') {
       setSortCol(null)
       return
@@ -196,6 +283,19 @@ export default function ChoiceListDetailPage() {
     setChoices(prev => prev.map(c => c.id === choiceId ? { ...c, [field]: updated.data[field] } : c))
   }
 
+  const handleSaveExtra = async (choiceId: number, columnId: number, value: string) => {
+    const res = await apiClient.setExtraValue(choiceId, columnId, value)
+    const updated = res.data
+    setChoices(prev => prev.map(c => {
+      if (c.id !== choiceId) return c
+      const existing = c.extra_values.find(ev => ev.column === columnId)
+      if (existing) {
+        return { ...c, extra_values: c.extra_values.map(ev => ev.column === columnId ? updated : ev) }
+      }
+      return { ...c, extra_values: [...c.extra_values, updated] }
+    }))
+  }
+
   const handleAddChoice = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!label.trim() || !id) return
@@ -227,7 +327,8 @@ export default function ChoiceListDetailPage() {
     try {
       const res = await apiClient.importChoices(id, file)
       const imported = [...(res.data.choices ?? [])].sort((a, b) => a.order - b.order)
-      setChoices(imported)
+      setChoices(imported.map(c => ({ ...c, extra_values: c.extra_values ?? [] })))
+      setColumns(res.data.columns ?? [])
       setSortCol(null)
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.response?.data) {
@@ -247,6 +348,65 @@ export default function ChoiceListDetailPage() {
       setChoices(prev => prev.filter(c => c.id !== choiceId))
     } catch {
       // silently ignore
+    }
+  }
+
+  // ---- column management ----
+
+  const handleConfirmAddColumn = async () => {
+    const name = newColumnName.trim()
+    setAddingColumn(false)
+    setNewColumnName('')
+    if (!name || !id) return
+    setColumnError(null)
+    try {
+      const res = await apiClient.addColumn(id, name)
+      setColumns(prev => [...prev, res.data])
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err) && err.response?.data) {
+        const data = err.response.data
+        setColumnError(data.error || data.detail || JSON.stringify(data))
+      } else {
+        setColumnError('Failed to add column.')
+      }
+    }
+  }
+
+  const handleCommitColumnEdit = async () => {
+    if (!columnEdit || !id) { setColumnEdit(null); return }
+    const name = columnEdit.draft.trim()
+    const col = columns.find(c => c.id === columnEdit.id)
+    setColumnEdit(null)
+    if (!name || !col || name === col.name) return
+    setColumnError(null)
+    try {
+      const res = await apiClient.updateColumn(id, columnEdit.id, name)
+      setColumns(prev => prev.map(c => c.id === columnEdit.id ? res.data : c))
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err) && err.response?.data) {
+        const data = err.response.data
+        setColumnError(data.error || data.detail || JSON.stringify(data))
+      } else {
+        setColumnError('Failed to rename column.')
+      }
+    }
+  }
+
+  const handleDeleteColumn = async (columnId: number) => {
+    if (!id) return
+    if (!window.confirm('Delete this column? All values stored in it will be lost.')) return
+    setColumnError(null)
+    try {
+      await apiClient.removeColumn(id, columnId)
+      setColumns(prev => prev.filter(c => c.id !== columnId))
+      setChoices(prev => prev.map(c => ({ ...c, extra_values: c.extra_values.filter(ev => ev.column !== columnId) })))
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err) && err.response?.data) {
+        const data = err.response.data
+        setColumnError(data.error || data.detail || JSON.stringify(data))
+      } else {
+        setColumnError('Failed to delete column.')
+      }
     }
   }
 
@@ -330,10 +490,33 @@ export default function ChoiceListDetailPage() {
       {/* Choices table */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-800">
-            Choices
-            <span className="ml-2 text-gray-400 font-normal text-sm">({choices.length})</span>
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="font-semibold text-gray-800">
+              Choices
+              <span className="ml-2 text-gray-400 font-normal text-sm">({choices.length})</span>
+            </h2>
+            {addingColumn ? (
+              <input
+                autoFocus
+                placeholder="Column name…"
+                value={newColumnName}
+                onChange={e => setNewColumnName(e.target.value)}
+                onBlur={handleConfirmAddColumn}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') handleConfirmAddColumn()
+                  if (e.key === 'Escape') { setAddingColumn(false); setNewColumnName('') }
+                }}
+                className="border border-indigo-300 rounded-lg px-2.5 py-1 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            ) : (
+              <button
+                onClick={() => setAddingColumn(true)}
+                className="text-xs text-indigo-500 hover:text-indigo-700 border border-dashed border-indigo-300 rounded-lg px-2.5 py-1 whitespace-nowrap transition-colors"
+              >
+                + column
+              </button>
+            )}
+          </div>
           <form onSubmit={handleAddChoice} className="flex gap-2">
             <input
               type="text"
@@ -358,6 +541,9 @@ export default function ChoiceListDetailPage() {
         {importError && (
           <p className="px-5 py-2 text-red-600 text-sm bg-red-50 border-b border-red-100">Import failed: {importError}</p>
         )}
+        {columnError && (
+          <p className="px-5 py-2 text-red-600 text-sm bg-red-50 border-b border-red-100">{columnError}</p>
+        )}
 
         {choices.length === 0 ? (
           <div className="text-center py-12 text-gray-400 text-sm">
@@ -365,6 +551,7 @@ export default function ChoiceListDetailPage() {
           </div>
         ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
@@ -391,6 +578,41 @@ export default function ChoiceListDetailPage() {
                       </span>
                     </button>
                   </th>
+                  {/* Extra column headers */}
+                  {columns.map(col => (
+                    <th key={col.id} className="px-5 py-3 text-left min-w-[8rem]">
+                      <div className="flex items-center gap-1 group">
+                        {columnEdit?.id === col.id ? (
+                          <input
+                            autoFocus
+                            value={columnEdit.draft}
+                            onChange={e => setColumnEdit({ id: col.id, draft: e.target.value })}
+                            onBlur={handleCommitColumnEdit}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') handleCommitColumnEdit()
+                              if (e.key === 'Escape') setColumnEdit(null)
+                            }}
+                            className="border border-indigo-300 rounded px-2 py-0.5 text-sm w-28 focus:outline-none"
+                          />
+                        ) : (
+                          <span
+                            className="font-semibold text-gray-600 cursor-pointer hover:text-indigo-700 transition-colors"
+                            title="Click to rename"
+                            onClick={() => setColumnEdit({ id: col.id, draft: col.name })}
+                          >
+                            {col.name}
+                          </span>
+                        )}
+                        <button
+                          className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-xs ml-1 transition-opacity leading-none"
+                          title="Delete column"
+                          onClick={() => handleDeleteColumn(col.id)}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </th>
+                  ))}
                   <th className="px-5 py-3 text-left font-semibold text-gray-600">Order</th>
                   <th className="px-5 py-3"></th>
                 </tr>
@@ -401,13 +623,16 @@ export default function ChoiceListDetailPage() {
                     <SortableChoiceRow
                       key={choice.id}
                       choice={choice}
+                      columns={columns}
                       onDelete={handleDelete}
                       onSave={handleSaveField}
+                      onSaveExtra={handleSaveExtra}
                     />
                   ))}
                 </tbody>
               </SortableContext>
             </table>
+            </div>
           </DndContext>
         )}
       </div>

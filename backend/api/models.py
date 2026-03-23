@@ -50,3 +50,30 @@ class Choice(models.Model):
 
     def __str__(self):
         return f"{self.label} ({self.value})"
+
+
+class ChoiceListColumn(models.Model):
+    """An extra configurable column attached to a ChoiceList"""
+    choice_list = models.ForeignKey(ChoiceList, on_delete=models.CASCADE, related_name='columns')
+    name = models.CharField(max_length=255)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['order', 'id']
+        unique_together = ('choice_list', 'name')
+
+    def __str__(self):
+        return f"{self.name} ({self.choice_list})"
+
+
+class ChoiceExtraValue(models.Model):
+    """Value for a custom column on a specific choice"""
+    choice = models.ForeignKey(Choice, on_delete=models.CASCADE, related_name='extra_values')
+    column = models.ForeignKey(ChoiceListColumn, on_delete=models.CASCADE, related_name='values')
+    value = models.TextField(blank=True, default='')
+
+    class Meta:
+        unique_together = ('choice', 'column')
+
+    def __str__(self):
+        return f"{self.choice} – {self.column.name}: {self.value}"
