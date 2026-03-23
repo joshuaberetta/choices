@@ -81,6 +81,7 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
 
         value = shortuuid.ShortUUID().random(length=9)
         choice = Choice.objects.create(choice_list=choice_list, label=label, value=value)
+        _stamp_removed_false(choice, _ensure_removed_column(choice_list))
         return Response(ChoiceSerializer(choice).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'], url_path='export')
@@ -156,16 +157,21 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
         ]
         created = Choice.objects.bulk_create(new_choices)
 
+        # Ensure the 'removed' column exists and stamp all new choices as removed=false
+        removed_col = _ensure_removed_column(choice_list)
+        # If 'removed' was also in the CSV, col_map already has it; otherwise add it
+        col_map.setdefault('removed', removed_col)
+
         # Create extra values for each new choice
-        if col_map:
-            extra_values = []
-            for choice, row in zip(created, valid_rows):
-                for col_name, col in col_map.items():
-                    v = row.get(col_name, '')
-                    if v:  # only persist non-blank values
-                        extra_values.append(ChoiceExtraValue(choice=choice, column=col, value=v))
-            if extra_values:
-                ChoiceExtraValue.objects.bulk_create(extra_values)
+        extra_values = []
+        for choice, row in zip(created, valid_rows):
+            for col_name, col in col_map.items():
+                v = row.get(col_name, '') if col_name != 'removed' else row.get('removed', 'false') or 'false'
+                # Always write the value (blank becomes empty string; 'removed' defaults to 'false')
+                if col_name == 'removed' or v:
+                    extra_values.append(ChoiceExtraValue(choice=choice, column=col, value=v))
+        if extra_values:
+            ChoiceExtraValue.objects.bulk_create(extra_values)
 
         # Re-fetch with prefetch to return accurate serialized data
         choice_list.refresh_from_db()
@@ -369,8 +375,8 @@ class KoboAddChoiceView(APIView):
                     existing.extra_values.filter(column=removed_col, value='true').exists()
                 )
                 if is_removed:
-                    # Un-soft-delete: clear the "removed" flag
-                    existing.extra_values.filter(column=removed_col).update(value='')
+                    # Un-soft-delete: restore removed=false
+                    existing.extra_values.filter(column=removed_col).update(value='false')
                     logger.info('ADD unremoved soft-deleted choice | label=%r value=%s | project=%s list=%s',
                                 label, existing.value, project_id, choice_list_name)
                     return Response({
@@ -404,6 +410,7 @@ class KoboAddChoiceView(APIView):
                 c.order = i
             Choice.objects.bulk_update(all_choices, ['order'])
             choice.refresh_from_db()
+            _stamp_removed_false(choice, _ensure_removed_column(choice_list))
 
             logger.info('ADD success | label=%r value=%s order=%d | project=%s list=%s', label, value, choice.order, project_id, choice_list_name)
             return Response({
@@ -422,6 +429,25 @@ class KoboAddChoiceView(APIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+
+def _ensure_removed_column(choice_list):
+    """Get or create the 'removed' column for a choice list."""
+    col, _ = ChoiceListColumn.objects.get_or_create(
+        choice_list=choice_list,
+        name='removed',
+        defaults={'order': choice_list.columns.count()},
+    )
+    return col
+
+
+def _stamp_removed_false(choice, removed_col):
+    """Ensure this choice has removed=false (creates the row if missing)."""
+    ChoiceExtraValue.objects.get_or_create(
+        choice=choice,
+        column=removed_col,
+        defaults={'value': 'false'},
+    )
 
 
 def _extract_kobo_value(request):
@@ -470,11 +496,7 @@ class KoboRemoveChoiceView(APIView):
                             value, project_id, choice_list_name)
                 return Response({'success': True, 'message': 'Choice not found (already removed)', 'value': value})
 
-            removed_col, _ = ChoiceListColumn.objects.get_or_create(
-                choice_list=choice_list,
-                name='removed',
-                defaults={'order': choice_list.columns.count()},
-            )
+            removed_col = _ensure_removed_column(choice_list)
             ChoiceExtraValue.objects.update_or_create(
                 choice=choice,
                 column=removed_col,
