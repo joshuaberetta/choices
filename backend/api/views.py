@@ -233,6 +233,10 @@ class KoboRemoveChoiceView(APIView):
         Remove a choice. Idempotent - returns success if not found.
         Extracts first value from JSON body regardless of key.
         """
+        ip = request.META.get('REMOTE_ADDR', '-')
+        logger.info('REMOVE request | project=%s list=%s | ip=%s | content-type=%s | body=%r',
+                    project_id, choice_list_name, ip,
+                    request.content_type, request.body)
         try:
             project = get_object_or_404(Project, slug=project_id)
             choice_list = get_object_or_404(
@@ -253,6 +257,8 @@ class KoboRemoveChoiceView(APIView):
             value = next(iter(data.values())) if data else None
             
             if not value:
+                logger.warning('REMOVE failed - no value | project=%s list=%s | parsed_data=%r',
+                               project_id, choice_list_name, data)
                 return Response(
                     {
                         'success': False,
@@ -264,7 +270,9 @@ class KoboRemoveChoiceView(APIView):
             # Find and delete choice by value (ID), not label
             choice = choice_list.choices.filter(value=value).first()
             if choice:
+                label = choice.label
                 choice.delete()
+                logger.info('REMOVE success | value=%r label=%r | project=%s list=%s', value, label, project_id, choice_list_name)
                 return Response({
                     'success': True,
                     'message': 'Choice removed successfully',
@@ -272,6 +280,7 @@ class KoboRemoveChoiceView(APIView):
                 })
             else:
                 # Idempotent - return success even if not found
+                logger.info('REMOVE idempotent - not found | value=%r | project=%s list=%s', value, project_id, choice_list_name)
                 return Response({
                     'success': True,
                     'message': 'Choice not found (already removed)',
@@ -279,6 +288,7 @@ class KoboRemoveChoiceView(APIView):
                 })
         
         except Exception as e:
+            logger.exception('REMOVE error | project=%s list=%s | error=%s', project_id, choice_list_name, e)
             return Response(
                 {
                     'success': False,
