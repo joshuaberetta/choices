@@ -250,9 +250,9 @@ class KoboRemoveChoiceView(APIView):
                     data = json.loads(request.body)
                 except (json.JSONDecodeError, Exception):
                     data = {}
-            label = next(iter(data.values())) if data else None
+            value = next(iter(data.values())) if data else None
             
-            if not label:
+            if not value:
                 return Response(
                     {
                         'success': False,
@@ -261,23 +261,21 @@ class KoboRemoveChoiceView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Find and delete choice
-            choice = choice_list.choices.filter(label=label).first()
+            # Find and delete choice by value (ID), not label
+            choice = choice_list.choices.filter(value=value).first()
             if choice:
-                choice_id = choice.value
                 choice.delete()
                 return Response({
                     'success': True,
                     'message': 'Choice removed successfully',
-                    'choice_id': choice_id,
-                    'value': label
+                    'value': value
                 })
             else:
                 # Idempotent - return success even if not found
                 return Response({
                     'success': True,
                     'message': 'Choice not found (already removed)',
-                    'value': label
+                    'value': value
                 })
         
         except Exception as e:
