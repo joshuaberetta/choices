@@ -390,14 +390,22 @@ class KoboAddChoiceView(APIView):
             # Generate short ID (9 chars alphanumeric)
             value = shortuuid.ShortUUID().random(length=9)
 
-            # Create new choice
+            # Create new choice (order assigned below)
             choice = Choice.objects.create(
                 choice_list=choice_list,
                 label=label,
-                value=value
+                value=value,
             )
 
-            logger.info('ADD success | label=%r value=%s | project=%s list=%s', label, value, project_id, choice_list_name)
+            # Re-sort all choices in the list alphabetically and reassign order
+            all_choices = list(Choice.objects.filter(choice_list=choice_list))
+            all_choices.sort(key=lambda c: c.label.lower())
+            for i, c in enumerate(all_choices):
+                c.order = i
+            Choice.objects.bulk_update(all_choices, ['order'])
+            choice.refresh_from_db()
+
+            logger.info('ADD success | label=%r value=%s order=%d | project=%s list=%s', label, value, choice.order, project_id, choice_list_name)
             return Response({
                 'success': True,
                 'message': 'Choice added successfully',
