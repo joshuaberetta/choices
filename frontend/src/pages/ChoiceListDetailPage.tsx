@@ -216,6 +216,7 @@ export default function ChoiceListDetailPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
 
   // Column rename state
   const [columnEdit, setColumnEdit] = useState<{ id: number; draft: string } | null>(null)
@@ -411,7 +412,7 @@ export default function ChoiceListDetailPage() {
     }
   }
 
-  if (loading) {
+  if (loading && !choiceList) {
     return <div className="flex items-center justify-center py-16 text-gray-400">Loading…</div>
   }
   if (error) {
@@ -531,6 +532,16 @@ export default function ChoiceListDetailPage() {
               </button>
             )}
           </div>
+          <div className="flex gap-2 items-center">
+            <button
+              type="button"
+              disabled={refreshing}
+              onClick={async () => { setRefreshing(true); try { await refetch() } finally { setRefreshing(false) } }}
+              title="Refresh choices"
+              className="px-2.5 py-1.5 text-sm text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-colors"
+            >
+              {refreshing ? 'Refreshing…' : '↻ Refresh'}
+            </button>
           <form onSubmit={handleAddChoice} className="flex gap-2">
             <input
               type="text"
@@ -547,6 +558,8 @@ export default function ChoiceListDetailPage() {
               {adding ? 'Adding…' : 'Add'}
             </button>
           </form>
+
+          </div>
         </div>
 
         {addError && (
