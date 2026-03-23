@@ -72,6 +72,11 @@ const apiClient = {
   deleteChoice: (id: string | number) => API.delete(`/choices/${id}/`),
   reorderChoices: (listId: string | number, items: { id: number; order: number }[]) =>
     API.post(`/choice-lists/${listId}/reorder/`, items),
+  importChoices: (listId: string | number, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return API.post<ChoiceList>(`/choice-lists/${listId}/import/`, form)
+  },
 };
 
 export default apiClient;

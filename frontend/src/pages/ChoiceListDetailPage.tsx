@@ -140,6 +140,8 @@ export default function ChoiceListDetailPage() {
   const [choices, setChoices] = useState<Choice[]>([])
   const [sortCol, setSortCol] = useState<'label' | 'value' | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [importing, setImporting] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
 
   useEffect(() => {
     if (choiceList?.choices) {
@@ -216,6 +218,29 @@ export default function ChoiceListDetailPage() {
     }
   }
 
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || !id) return
+    setImporting(true)
+    setImportError(null)
+    try {
+      const res = await apiClient.importChoices(id, file)
+      const imported = [...(res.data.choices ?? [])].sort((a, b) => a.order - b.order)
+      setChoices(imported)
+      setSortCol(null)
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err) && err.response?.data) {
+        const data = err.response.data
+        setImportError(data.error || data.detail || JSON.stringify(data))
+      } else {
+        setImportError('Import failed. Please try again.')
+      }
+    } finally {
+      setImporting(false)
+    }
+  }
+
   const handleDelete = async (choiceId: number) => {
     try {
       await apiClient.deleteChoice(choiceId)
@@ -258,6 +283,27 @@ export default function ChoiceListDetailPage() {
             <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-mono bg-gray-100 text-gray-600 border border-gray-200">
               {choiceList.slug}
             </span>
+            <a
+              href={`/api/choice-lists/${choiceList.id}/export/`}
+              download
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors"
+            >
+              ↓ CSV
+            </a>
+            <label className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
+              importing
+                ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+            }`}>
+              {importing ? 'Importing…' : '↑ Import CSV'}
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                disabled={importing}
+                onChange={handleImport}
+              />
+            </label>
           </div>
         </div>
       </div>
@@ -308,6 +354,9 @@ export default function ChoiceListDetailPage() {
 
         {addError && (
           <p className="px-5 py-2 text-red-600 text-sm bg-red-50 border-b border-red-100">{addError}</p>
+        )}
+        {importError && (
+          <p className="px-5 py-2 text-red-600 text-sm bg-red-50 border-b border-red-100">Import failed: {importError}</p>
         )}
 
         {choices.length === 0 ? (

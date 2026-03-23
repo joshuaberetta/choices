@@ -70,6 +70,67 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
         choice = Choice.objects.create(choice_list=choice_list, label=label, value=value)
         return Response(ChoiceSerializer(choice).data, status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['get'], url_path='export')
+    def export(self, request, pk=None):
+        """Export choices as CSV. Accessible via /api/choice-lists/{id}/export/"""
+        choice_list = self.get_object()
+        output = StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['name', 'label'])
+        for choice in choice_list.choices.order_by('order'):
+            writer.writerow([choice.value, choice.label])
+        response = HttpResponse(output.getvalue(), content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="{choice_list.slug}.csv"'
+        return response
+
+    @action(detail=True, methods=['post'], url_path='import')
+    def import_csv(self, request, pk=None):
+        """Replace all choices from an uploaded CSV (columns: name/value, label)."""
+        choice_list = self.get_object()
+        uploaded = request.FILES.get('file')
+        if not uploaded:
+            return Response({'error': 'file is required'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            text = uploaded.read().decode('utf-8-sig')
+            dialect = csv.Sniffer().sniff(text[:2048], delimiters=',;\t|')
+            reader = csv.DictReader(StringIO(text), dialect=dialect)
+            raw_rows = list(reader)
+            # Normalise headers: strip whitespace and lowercase
+            rows = [
+                {k.strip().lower(): (v.strip() if v else '') for k, v in row.items()}
+                for row in raw_rows
+            ]
+        except Exception as e:
+            return Response({'error': f'Could not parse CSV: {e}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not rows:
+            return Response({'error': 'CSV file is empty'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Accept 'name' or 'value' as the ID column
+        sample = rows[0]
+        id_col = 'name' if 'name' in sample else ('value' if 'value' in sample else None)
+        if not id_col or 'label' not in sample:
+            found = list(sample.keys())
+            return Response(
+                {'error': f'CSV must have a "name" (or "value") column and a "label" column. Found columns: {found}'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        choice_list.choices.all().delete()
+        new_choices = [
+            Choice(
+                choice_list=choice_list,
+                value=row[id_col],
+                label=row['label'],
+                order=i,
+            )
+            for i, row in enumerate(rows)
+            if row.get(id_col) and row.get('label')
+        ]
+        Choice.objects.bulk_create(new_choices)
+        serializer = ChoiceListDetailSerializer(choice_list)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['post'])
     def reorder(self, request, pk=None):
         """Bulk-update order for choices in a list. Expects [{id, order}, ...]."""
