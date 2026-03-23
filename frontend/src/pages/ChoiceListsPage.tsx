@@ -29,6 +29,33 @@ export default function ChoiceListsPage() {
       next.has(projectId) ? next.delete(projectId) : next.add(projectId)
       return next
     })
+
+  // Inline editing
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editForm, setEditForm] = useState({ name: '', slug: '' })
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+
+  const startEdit = (list: { id: number; name: string; slug: string }) => {
+    setEditingId(list.id)
+    setEditForm({ name: list.name, slug: list.slug })
+    setEditError(null)
+  }
+  const cancelEdit = () => { setEditingId(null); setEditError(null) }
+  const saveEdit = async (id: number) => {
+    setEditSaving(true)
+    setEditError(null)
+    try {
+      await apiClient.updateChoiceList(id, { name: editForm.name, slug: editForm.slug })
+      setEditingId(null)
+      refetch()
+    } catch {
+      setEditError('Failed to save. Check that the slug is unique and valid.')
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
   const [form, setForm] = useState({ project: '', name: '', slug: '', description: '' })
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
@@ -182,18 +209,62 @@ export default function ChoiceListsPage() {
                       </thead>
                       <tbody>
                         {group.lists.map(list => (
-                          <tr key={list.id} className="border-b border-gray-50 last:border-b-0 hover:bg-gray-50 transition-colors">
-                            <td className="px-5 py-3 font-medium text-gray-900">{list.name}</td>
-                            <td className="px-5 py-3 font-mono text-gray-500 text-xs">{list.slug}</td>
-                            <td className="px-5 py-3 text-right">
-                              <Link
-                                to={`/choice-lists/${list.id}`}
-                                className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors"
-                              >
-                                View →
-                              </Link>
-                            </td>
-                          </tr>
+                          editingId === list.id ? (
+                            <tr key={list.id} className="border-b border-gray-50 last:border-b-0 bg-indigo-50/40">
+                              <td className="px-4 py-2">
+                                <input
+                                  autoFocus
+                                  type="text"
+                                  value={editForm.name}
+                                  onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+                                  className="w-full border border-indigo-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                />
+                                {editError && <p className="text-red-600 text-xs mt-1">{editError}</p>}
+                              </td>
+                              <td className="px-4 py-2">
+                                <input
+                                  type="text"
+                                  value={editForm.slug}
+                                  onChange={e => setEditForm(f => ({ ...f, slug: e.target.value }))}
+                                  className="w-full border border-indigo-300 rounded-md px-2 py-1 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                />
+                              </td>
+                              <td className="px-4 py-2 text-right whitespace-nowrap">
+                                <button
+                                  onClick={() => saveEdit(list.id)}
+                                  disabled={editSaving}
+                                  className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors mr-2"
+                                >
+                                  {editSaving ? 'Saving…' : 'Save'}
+                                </button>
+                                <button
+                                  onClick={cancelEdit}
+                                  className="px-3 py-1.5 bg-white border border-gray-300 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-50 transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </td>
+                            </tr>
+                          ) : (
+                            <tr key={list.id} className="border-b border-gray-50 last:border-b-0 hover:bg-gray-50 transition-colors group/row">
+                              <td className="px-5 py-3 font-medium text-gray-900">{list.name}</td>
+                              <td className="px-5 py-3 font-mono text-gray-500 text-xs">{list.slug}</td>
+                              <td className="px-5 py-3 text-right whitespace-nowrap">
+                                <button
+                                  onClick={() => startEdit(list)}
+                                  className="px-3 py-1.5 border border-gray-200 text-gray-500 rounded-lg text-xs font-medium hover:bg-gray-100 transition-colors mr-2 opacity-0 group-hover/row:opacity-100"
+                                >
+                                  Edit
+                                </button>
+                                <Link
+                                  to={`/choice-lists/${list.id}`}
+                                  className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors"
+                                >
+                                  View →
+                                </Link>
+                              </td>
+                            </tr>
+                          )
                         ))}
                       </tbody>
                     </table>
