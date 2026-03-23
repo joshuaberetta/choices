@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useChoiceLists, useProjects } from '../hooks/useChoiceLists'
 import apiClient from '../services/api'
@@ -8,6 +8,27 @@ export default function ChoiceListsPage() {
   const { projects } = useProjects()
 
   const [showForm, setShowForm] = useState(false)
+
+  // Group choice lists by project
+  const grouped = useMemo(() => {
+    const map = new Map<number, { project_name: string; project_slug: string; lists: typeof choiceLists }>()
+    for (const list of choiceLists) {
+      if (!map.has(list.project)) {
+        map.set(list.project, { project_name: list.project_name, project_slug: list.project_slug, lists: [] })
+      }
+      map.get(list.project)!.lists.push(list)
+    }
+    return Array.from(map.values()).sort((a, b) => a.project_name.localeCompare(b.project_name))
+  }, [choiceLists])
+
+  // All projects expanded by default
+  const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
+  const toggleProject = (projectId: number) =>
+    setCollapsed(prev => {
+      const next = new Set(prev)
+      next.has(projectId) ? next.delete(projectId) : next.add(projectId)
+      return next
+    })
   const [form, setForm] = useState({ project: '', name: '', slug: '', description: '' })
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
@@ -123,38 +144,64 @@ export default function ChoiceListsPage() {
           <p className="text-sm mt-1">Create one using the button above, or add data via the Django admin.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="px-5 py-3 text-left font-semibold text-gray-600">Name</th>
-                <th className="px-5 py-3 text-left font-semibold text-gray-600">Project</th>
-                <th className="px-5 py-3 text-left font-semibold text-gray-600">Slug</th>
-                <th className="px-5 py-3 text-right font-semibold text-gray-600"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {choiceLists.map(list => (
-                <tr key={list.id} className="border-b border-gray-50 last:border-b-0 hover:bg-gray-50 transition-colors">
-                  <td className="px-5 py-3 font-medium text-gray-900">{list.name}</td>
-                  <td className="px-5 py-3">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono bg-indigo-50 text-indigo-700">
-                      {list.project_slug}
+        <div className="space-y-3">
+          {grouped.map(group => {
+            const isOpen = !collapsed.has(group.lists[0].project)
+            return (
+              <div key={group.project_slug} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                {/* Accordion header */}
+                <button
+                  onClick={() => toggleProject(group.lists[0].project)}
+                  className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="font-semibold text-gray-900">{group.project_name}</span>
+                    <span className="text-xs font-mono bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded">
+                      {group.project_slug}
                     </span>
-                  </td>
-                  <td className="px-5 py-3 font-mono text-gray-500 text-xs">{list.slug}</td>
-                  <td className="px-5 py-3 text-right">
-                    <Link
-                      to={`/choice-lists/${list.id}`}
-                      className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors"
-                    >
-                      View →
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    <span className="text-xs text-gray-400">{group.lists.length} list{group.lists.length !== 1 ? 's' : ''}</span>
+                  </div>
+                  <svg
+                    className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {/* Accordion body */}
+                {isOpen && (
+                  <div className="border-t border-gray-100">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-100">
+                          <th className="px-5 py-2.5 text-left font-semibold text-gray-500 text-xs uppercase tracking-wide">Name</th>
+                          <th className="px-5 py-2.5 text-left font-semibold text-gray-500 text-xs uppercase tracking-wide">Slug</th>
+                          <th className="px-5 py-2.5 text-right font-semibold text-gray-500 text-xs uppercase tracking-wide"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {group.lists.map(list => (
+                          <tr key={list.id} className="border-b border-gray-50 last:border-b-0 hover:bg-gray-50 transition-colors">
+                            <td className="px-5 py-3 font-medium text-gray-900">{list.name}</td>
+                            <td className="px-5 py-3 font-mono text-gray-500 text-xs">{list.slug}</td>
+                            <td className="px-5 py-3 text-right">
+                              <Link
+                                to={`/choice-lists/${list.id}`}
+                                className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors"
+                              >
+                                View →
+                              </Link>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
