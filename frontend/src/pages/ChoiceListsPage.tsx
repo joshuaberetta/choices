@@ -110,6 +110,39 @@ export default function ChoiceListsPage() {
     }
   }
 
+  // Delete project
+  const [confirmDeleteProjectId, setConfirmDeleteProjectId] = useState<number | null>(null)
+  const [deletingProjectId, setDeletingProjectId] = useState<number | null>(null)
+  const handleDeleteProject = async (id: number) => {
+    setDeletingProjectId(id)
+    try {
+      await apiClient.deleteProject(id)
+      setConfirmDeleteProjectId(null)
+      refetchProjects()
+      refetch()
+    } catch {
+      // keep confirm state open so user can retry or cancel
+    } finally {
+      setDeletingProjectId(null)
+    }
+  }
+
+  // Delete choice list
+  const [confirmDeleteListId, setConfirmDeleteListId] = useState<number | null>(null)
+  const [deletingListId, setDeletingListId] = useState<number | null>(null)
+  const handleDeleteList = async (id: number) => {
+    setDeletingListId(id)
+    try {
+      await apiClient.deleteChoiceList(id)
+      setConfirmDeleteListId(null)
+      refetch()
+    } catch {
+      // keep confirm state open so user can retry or cancel
+    } finally {
+      setDeletingListId(null)
+    }
+  }
+
   // Per-project new list form
   const [newListForProject, setNewListForProject] = useState<number | null>(null)
   const [listForm, setListForm] = useState({ name: '', slug: '', description: '' })
@@ -147,8 +180,7 @@ export default function ChoiceListsPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Choice Lists</h1>
-          <p className="text-gray-500 text-sm mt-1">Manage external choice lists for KoboToolbox</p>
+          <h1 className="text-2xl font-bold text-gray-900">Projects</h1>
         </div>
         <button
           onClick={() => { setShowProjectForm(v => !v); setProjectFormError(null) }}
@@ -226,7 +258,7 @@ export default function ChoiceListsPage() {
             const isAddingList = newListForProject === group.id
             const isEditingProject = editingProjectId === group.id
             return (
-              <div key={group.project_slug} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div key={group.project_slug} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden group/project">
                 {/* Accordion header */}
                 <div className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 transition-colors">
                   <button
@@ -240,18 +272,45 @@ export default function ChoiceListsPage() {
                     <span className="text-xs text-gray-400">{group.lists.length} list{group.lists.length !== 1 ? 's' : ''}</span>
                   </button>
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => isEditingProject ? cancelEditProject() : startEditProject(group)}
-                      className="px-3 py-1.5 border border-gray-200 text-gray-500 rounded-lg text-xs font-medium hover:bg-gray-100 transition-colors"
-                    >
-                      {isEditingProject ? 'Cancel' : 'Edit'}
-                    </button>
-                    <button
-                      onClick={() => isAddingList ? closeNewList() : openNewList(group.id)}
-                      className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors"
-                    >
-                      {isAddingList ? 'Cancel' : '+ New List'}
-                    </button>
+                    {confirmDeleteProjectId === group.id ? (
+                      <>
+                        <span className="text-xs text-gray-500">Delete project{group.lists.length > 0 ? ` and ${group.lists.length} list${group.lists.length !== 1 ? 's' : ''}` : ''}?</span>
+                        <button
+                          onClick={() => handleDeleteProject(group.id)}
+                          disabled={deletingProjectId === group.id}
+                          className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
+                        >
+                          {deletingProjectId === group.id ? 'Deleting…' : 'Yes, delete'}
+                        </button>
+                        <button
+                          onClick={() => setConfirmDeleteProjectId(null)}
+                          className="px-3 py-1.5 border border-gray-200 text-gray-500 rounded-lg text-xs font-medium hover:bg-gray-100 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => isEditingProject ? cancelEditProject() : startEditProject(group)}
+                          className="px-3 py-1.5 border border-gray-200 text-gray-500 rounded-lg text-xs font-medium hover:bg-gray-100 transition-colors opacity-0 group-hover/project:opacity-100"
+                        >
+                          {isEditingProject ? 'Cancel' : 'Edit'}
+                        </button>
+                        <button
+                          onClick={() => { cancelEditProject(); setConfirmDeleteProjectId(group.id) }}
+                          className="px-3 py-1.5 border border-red-200 text-red-500 rounded-lg text-xs font-medium hover:bg-red-50 transition-colors opacity-0 group-hover/project:opacity-100"
+                        >
+                          Delete
+                        </button>
+                        <button
+                          onClick={() => isAddingList ? closeNewList() : openNewList(group.id)}
+                          className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors"
+                        >
+                          {isAddingList ? 'Cancel' : '+ New List'}
+                        </button>
+                      </>
+                    )}
                     <svg
                       onClick={() => toggleProject(group.id)}
                       className={`w-4 h-4 text-gray-400 transition-transform duration-200 cursor-pointer ${isOpen ? 'rotate-180' : ''}`}
@@ -417,18 +476,45 @@ export default function ChoiceListsPage() {
                                 <td className="px-5 py-3 font-mono text-gray-500 text-xs">{list.slug}</td>
                                 <td className="px-5 py-3 text-gray-400 text-xs">{list.choices_count}</td>
                                 <td className="px-5 py-3 text-right whitespace-nowrap">
-                                  <button
-                                    onClick={() => startEdit(list)}
-                                    className="px-3 py-1.5 border border-gray-200 text-gray-500 rounded-lg text-xs font-medium hover:bg-gray-100 transition-colors mr-2 opacity-0 group-hover/row:opacity-100"
-                                  >
-                                    Edit
-                                  </button>
-                                  <Link
-                                    to={`/${list.project_slug}/${list.slug}`}
-                                    className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors"
-                                  >
-                                    View →
-                                  </Link>
+                                  {confirmDeleteListId === list.id ? (
+                                    <>
+                                      <span className="text-xs text-gray-500 mr-2">Delete list?</span>
+                                      <button
+                                        onClick={() => handleDeleteList(list.id)}
+                                        disabled={deletingListId === list.id}
+                                        className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium hover:bg-red-700 disabled:opacity-50 transition-colors mr-2"
+                                      >
+                                        {deletingListId === list.id ? 'Deleting…' : 'Yes, delete'}
+                                      </button>
+                                      <button
+                                        onClick={() => setConfirmDeleteListId(null)}
+                                        className="px-3 py-1.5 border border-gray-200 text-gray-500 rounded-lg text-xs font-medium hover:bg-gray-50 transition-colors"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <button
+                                        onClick={() => startEdit(list)}
+                                        className="px-3 py-1.5 border border-gray-200 text-gray-500 rounded-lg text-xs font-medium hover:bg-gray-100 transition-colors mr-2 opacity-0 group-hover/row:opacity-100"
+                                      >
+                                        Edit
+                                      </button>
+                                      <button
+                                        onClick={() => { cancelEdit(); setConfirmDeleteListId(list.id) }}
+                                        className="px-3 py-1.5 border border-red-200 text-red-500 rounded-lg text-xs font-medium hover:bg-red-50 transition-colors mr-2 opacity-0 group-hover/row:opacity-100"
+                                      >
+                                        Delete
+                                      </button>
+                                      <Link
+                                        to={`/${list.project_slug}/${list.slug}`}
+                                        className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors"
+                                      >
+                                        View →
+                                      </Link>
+                                    </>
+                                  )}
                                 </td>
                               </tr>
                             )

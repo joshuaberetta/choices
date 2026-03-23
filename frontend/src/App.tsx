@@ -26,19 +26,22 @@ export default function App() {
       <div className="min-h-screen bg-gray-50">
         <header className="bg-gradient-to-r from-indigo-600 to-purple-700 shadow">
           <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-            <Link to="/" className="inline-flex flex-col">
-              <span className="text-xl font-bold text-white tracking-tight">Choices</span>
-              <span className="text-indigo-200 text-sm">External choice lists for KoboToolbox</span>
+            <Link to="/" className="inline-flex items-center gap-3">
+              <img src="/icon.png" alt="Choices" className="h-9 w-9" />
+              <div className="flex flex-col">
+                <span className="text-xl font-bold text-white tracking-tight">Choices</span>
+                <span className="text-indigo-200 text-sm">External choice lists for KoboToolbox</span>
+              </div>
             </Link>
             {user && (
               <div className="flex items-center gap-4">
                 <span className="text-indigo-200 text-sm">{user.username}</span>
-                <button
+                {/* <button
                   onClick={() => setShowChangePassword(true)}
                   className="text-indigo-200 hover:text-white text-sm transition-colors"
                 >
                   Change password
-                </button>
+                </button> */}
                 <button
                   onClick={() => logout()}
                   className="bg-white/10 hover:bg-white/20 text-white text-sm px-3 py-1.5 rounded transition-colors"
