@@ -16,7 +16,7 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-from api.views import KoboCSVExportView, KoboAddChoiceView, KoboRemoveChoiceView
+from api.views import KoboCSVExportView, KoboAddChoiceView, KoboRemoveChoiceView, KoboDeleteChoiceView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -26,4 +26,5 @@ urlpatterns = [
     path('<str:project_id>/<str:choice_list_name>.csv', KoboCSVExportView.as_view(), name='kobo-csv-export'),
     path('<str:project_id>/<str:choice_list_name>/add', KoboAddChoiceView.as_view(), name='kobo-add-choice'),
     path('<str:project_id>/<str:choice_list_name>/remove', KoboRemoveChoiceView.as_view(), name='kobo-remove-choice'),
+    path('<str:project_id>/<str:choice_list_name>/delete', KoboDeleteChoiceView.as_view(), name='kobo-delete-choice'),
 ]

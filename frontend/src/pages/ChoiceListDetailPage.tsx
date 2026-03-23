@@ -483,6 +483,12 @@ export default function ChoiceListDetailPage() {
           <div className="flex items-center gap-2">
             <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded text-xs font-medium w-12 text-center shrink-0">POST</span>
             <code className="font-mono text-indigo-800 text-xs break-all">/{choiceList.project_slug}/{choiceList.slug}/remove</code>
+            <span className="text-indigo-400 text-xs shrink-0">soft delete (sets removed=true)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-medium w-12 text-center shrink-0">POST</span>
+            <code className="font-mono text-indigo-800 text-xs break-all">/{choiceList.project_slug}/{choiceList.slug}/delete</code>
+            <span className="text-indigo-400 text-xs shrink-0">hard delete</span>
           </div>
         </div>
       </div>

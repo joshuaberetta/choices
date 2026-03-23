@@ -399,84 +399,112 @@ class KoboAddChoiceView(APIView):
             )
 
 
+def _extract_kobo_value(request):
+    """Extract the first value from a KoboToolbox request body (key-agnostic)."""
+    data = request.data
+    if not data:
+        try:
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, Exception):
+            data = {}
+    return next(iter(data.values())) if data else None
+
+
 class KoboRemoveChoiceView(APIView):
     """
-    Remove a choice from a choice list via KoboToolbox API.
+    Soft-remove a choice via KoboToolbox API.
     Endpoint: POST /{project_id}/{choice_list_name}/remove
-    
-    Request format: {"name": "Joshua Beretta"} (key can be any name)
+
+    Creates (or reuses) a "removed" extra column on the choice list and sets
+    its value to "true" for the matched choice. Idempotent.
+
+    Request format: {"name": "<choice value/id>"} (key can be any name)
     Response format: {"success": true, ...}
     """
     authentication_classes = []
     permission_classes = [AllowAny]
     parser_classes = [JSONParser, PlainTextJSONParser]
-    
+
     def post(self, request, project_id, choice_list_name):
-        """
-        Remove a choice. Idempotent - returns success if not found.
-        Extracts first value from JSON body regardless of key.
-        """
         ip = request.META.get('REMOTE_ADDR', '-')
-        logger.info('REMOVE request | project=%s list=%s | ip=%s | content-type=%s | body=%r',
-                    project_id, choice_list_name, ip,
-                    request.content_type, request.body)
+        logger.info('REMOVE (soft) request | project=%s list=%s | ip=%s | content-type=%s | body=%r',
+                    project_id, choice_list_name, ip, request.content_type, request.body)
         try:
             project = get_object_or_404(Project, slug=project_id)
-            choice_list = get_object_or_404(
-                ChoiceList,
-                project=project,
-                slug=choice_list_name
-            )
-            
-            # Extract first value from JSON body
-            # KoboToolbox may send content-type: text/plain, so fall back to
-            # parsing raw body if DRF didn't parse it
-            data = request.data
-            if not data:
-                try:
-                    data = json.loads(request.body)
-                except (json.JSONDecodeError, Exception):
-                    data = {}
-            value = next(iter(data.values())) if data else None
-            
+            choice_list = get_object_or_404(ChoiceList, project=project, slug=choice_list_name)
+
+            value = _extract_kobo_value(request)
             if not value:
-                logger.warning('REMOVE failed - no value | project=%s list=%s | parsed_data=%r',
-                               project_id, choice_list_name, data)
-                return Response(
-                    {
-                        'success': False,
-                        'message': 'No value provided in request body'
-                    },
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Find and delete choice by value (ID), not label
+                logger.warning('REMOVE (soft) failed - no value | project=%s list=%s', project_id, choice_list_name)
+                return Response({'success': False, 'message': 'No value provided in request body'},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+            choice = choice_list.choices.filter(value=value).first()
+            if not choice:
+                logger.info('REMOVE (soft) idempotent - not found | value=%r | project=%s list=%s',
+                            value, project_id, choice_list_name)
+                return Response({'success': True, 'message': 'Choice not found (already removed)', 'value': value})
+
+            removed_col, _ = ChoiceListColumn.objects.get_or_create(
+                choice_list=choice_list,
+                name='removed',
+                defaults={'order': choice_list.columns.count()},
+            )
+            ChoiceExtraValue.objects.update_or_create(
+                choice=choice,
+                column=removed_col,
+                defaults={'value': 'true'},
+            )
+            logger.info('REMOVE (soft) success | value=%r label=%r | project=%s list=%s',
+                        value, choice.label, project_id, choice_list_name)
+            return Response({'success': True, 'message': 'Choice marked as removed', 'value': value})
+
+        except Exception as e:
+            logger.exception('REMOVE (soft) error | project=%s list=%s | error=%s', project_id, choice_list_name, e)
+            return Response({'success': False, 'message': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class KoboDeleteChoiceView(APIView):
+    """
+    Hard-delete a choice via KoboToolbox API.
+    Endpoint: POST /{project_id}/{choice_list_name}/delete
+
+    Permanently deletes the choice row. Idempotent.
+
+    Request format: {"name": "<choice value/id>"} (key can be any name)
+    Response format: {"success": true, ...}
+    """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    parser_classes = [JSONParser, PlainTextJSONParser]
+
+    def post(self, request, project_id, choice_list_name):
+        ip = request.META.get('REMOTE_ADDR', '-')
+        logger.info('DELETE (hard) request | project=%s list=%s | ip=%s | content-type=%s | body=%r',
+                    project_id, choice_list_name, ip, request.content_type, request.body)
+        try:
+            project = get_object_or_404(Project, slug=project_id)
+            choice_list = get_object_or_404(ChoiceList, project=project, slug=choice_list_name)
+
+            value = _extract_kobo_value(request)
+            if not value:
+                logger.warning('DELETE (hard) failed - no value | project=%s list=%s', project_id, choice_list_name)
+                return Response({'success': False, 'message': 'No value provided in request body'},
+                                status=status.HTTP_400_BAD_REQUEST)
+
             choice = choice_list.choices.filter(value=value).first()
             if choice:
                 label = choice.label
                 choice.delete()
-                logger.info('REMOVE success | value=%r label=%r | project=%s list=%s', value, label, project_id, choice_list_name)
-                return Response({
-                    'success': True,
-                    'message': 'Choice removed successfully',
-                    'value': value
-                })
+                logger.info('DELETE (hard) success | value=%r label=%r | project=%s list=%s',
+                            value, label, project_id, choice_list_name)
+                return Response({'success': True, 'message': 'Choice deleted', 'value': value})
             else:
-                # Idempotent - return success even if not found
-                logger.info('REMOVE idempotent - not found | value=%r | project=%s list=%s', value, project_id, choice_list_name)
-                return Response({
-                    'success': True,
-                    'message': 'Choice not found (already removed)',
-                    'value': value
-                })
-        
+                logger.info('DELETE (hard) idempotent - not found | value=%r | project=%s list=%s',
+                            value, project_id, choice_list_name)
+                return Response({'success': True, 'message': 'Choice not found (already deleted)', 'value': value})
+
         except Exception as e:
-            logger.exception('REMOVE error | project=%s list=%s | error=%s', project_id, choice_list_name, e)
-            return Response(
-                {
-                    'success': False,
-                    'message': str(e)
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            logger.exception('DELETE (hard) error | project=%s list=%s | error=%s', project_id, choice_list_name, e)
+            return Response({'success': False, 'message': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
