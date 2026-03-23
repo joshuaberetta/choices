@@ -116,6 +116,13 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         from django.db.models import Count
         qs = ChoiceList.objects.filter(project__owner=self.request.user)
+        # Optional slug-based filtering for list lookups
+        project_slug = self.request.query_params.get('project_slug')
+        slug = self.request.query_params.get('slug')
+        if project_slug:
+            qs = qs.filter(project__slug=project_slug)
+        if slug:
+            qs = qs.filter(slug=slug)
         if self.action == 'list':
             qs = qs.annotate(choices_count_annotation=Count('choices'))
         elif self.action in ('retrieve', 'export', 'import_csv'):

@@ -92,6 +92,8 @@ const apiClient = {
   // Choice Lists
   getChoiceLists: () => API.get<PaginatedResponse<ChoiceList>>('/choice-lists/'),
   getChoiceList: (id: string | number) => API.get<ChoiceList>(`/choice-lists/${id}/`),
+  getChoiceListBySlug: (projectSlug: string, choiceListSlug: string) =>
+    API.get<ChoiceList>(`/choice-lists/`, { params: { project_slug: projectSlug, slug: choiceListSlug } }),
   createChoiceList: (data: Partial<ChoiceList>) => API.post<ChoiceList>('/choice-lists/', data),
   updateChoiceList: (id: string | number, data: Partial<ChoiceList>) =>
     API.patch<ChoiceList>(`/choice-lists/${id}/`, data),

@@ -424,7 +424,7 @@ export default function ChoiceListsPage() {
                                     Edit
                                   </button>
                                   <Link
-                                    to={`/choice-lists/${list.id}`}
+                                    to={`/${list.project_slug}/${list.slug}`}
                                     className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors"
                                   >
                                     View →

@@ -53,7 +53,7 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/" element={<ProtectedRoute><ChoiceListsPage /></ProtectedRoute>} />
-            <Route path="/choice-lists/:id" element={<ProtectedRoute><ChoiceListDetailPage /></ProtectedRoute>} />
+            <Route path="/:projectSlug/:choiceListSlug" element={<ProtectedRoute><ChoiceListDetailPage /></ProtectedRoute>} />
           </Routes>
         </main>
         {showChangePassword && (

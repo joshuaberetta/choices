@@ -52,6 +52,35 @@ export const useChoiceList = (id: string | number) => {
   return { choiceList, loading, error, refetch: fetchChoiceList };
 };
 
+export const useChoiceListBySlug = (projectSlug: string, choiceListSlug: string) => {
+  const [choiceList, setChoiceList] = useState<ChoiceList | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchChoiceList = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await apiClient.getChoiceListBySlug(projectSlug, choiceListSlug);
+      const results = (response.data as unknown as { results: ChoiceList[] }).results;
+      if (!results?.length) throw new Error('Choice list not found');
+      // Fetch full detail (with choices) using the resolved id
+      const detail = await apiClient.getChoiceList(results[0].id);
+      setChoiceList(detail.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch choice list');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchChoiceList();
+  }, [projectSlug, choiceListSlug]);
+
+  return { choiceList, loading, error, refetch: fetchChoiceList };
+};
+
 export const useProjects = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(false);

@@ -16,7 +16,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { useChoiceList } from '../hooks/useChoiceLists'
+import { useChoiceListBySlug } from '../hooks/useChoiceLists'
 import apiClient, { type Choice, type ChoiceListColumn, type ChoiceExtraValue } from '../services/api'
 import { useAuthStore } from '../store/authStore'
 
@@ -241,8 +241,8 @@ function SortableChoiceRow({
 }
 
 export default function ChoiceListDetailPage() {
-  const { id } = useParams<{ id: string }>()
-  const { choiceList, loading, error, refetch } = useChoiceList(id!)
+  const { projectSlug, choiceListSlug } = useParams<{ projectSlug: string; choiceListSlug: string }>()
+  const { choiceList, loading, error, refetch } = useChoiceListBySlug(projectSlug!, choiceListSlug!)
   const { user } = useAuthStore()
 
   const [label, setLabel] = useState('')
@@ -323,7 +323,7 @@ export default function ChoiceListDetailPage() {
 
     setChoices(sorted)
     try {
-      await apiClient.reorderChoices(id!, sorted.map(c => ({ id: c.id, order: c.order })))
+      await apiClient.reorderChoices(choiceList!.id, sorted.map(c => ({ id: c.id, order: c.order })))
     } catch {
       refetch()
     }
@@ -338,7 +338,7 @@ export default function ChoiceListDetailPage() {
     setChoices(reordered)
     setSortCol(null)
     try {
-      await apiClient.reorderChoices(id!, reordered.map(c => ({ id: c.id, order: c.order })))
+      await apiClient.reorderChoices(choiceList!.id, reordered.map(c => ({ id: c.id, order: c.order })))
     } catch {
       refetch()
     }
@@ -364,11 +364,11 @@ export default function ChoiceListDetailPage() {
 
   const handleAddChoice = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!label.trim() || !id) return
+    if (!label.trim() || !choiceList) return
     setAdding(true)
     setAddError(null)
     try {
-      await apiClient.createChoice(id, label.trim())
+      await apiClient.createChoice(choiceList.id, label.trim())
       setLabel('')
       refetch()
     } catch (err: unknown) {
@@ -385,11 +385,11 @@ export default function ChoiceListDetailPage() {
   }
 
   const handleSaveNameSettings = async () => {
-    if (!id) return
+    if (!choiceList) return
     setNameSettingsSaving(true)
     setNameSettingsError(null)
     try {
-      await apiClient.updateChoiceList(id, { name_generation: nameGeneration, name_max_length: nameMaxLength })
+      await apiClient.updateChoiceList(choiceList.id, { name_generation: nameGeneration, name_max_length: nameMaxLength })
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.response?.data) {
         const data = err.response.data
@@ -405,11 +405,11 @@ export default function ChoiceListDetailPage() {
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     e.target.value = ''
-    if (!file || !id) return
+    if (!file || !choiceList) return
     setImporting(true)
     setImportError(null)
     try {
-      const res = await apiClient.importChoices(id, file)
+      const res = await apiClient.importChoices(choiceList.id, file)
       const imported = [...(res.data.choices ?? [])].sort((a, b) => a.order - b.order)
       setChoices(imported.map(c => ({ ...c, extra_values: c.extra_values ?? [] })))
       setColumns(res.data.columns ?? [])
@@ -441,10 +441,10 @@ export default function ChoiceListDetailPage() {
     const name = newColumnName.trim()
     setAddingColumn(false)
     setNewColumnName('')
-    if (!name || !id) return
+    if (!name || !choiceList) return
     setColumnError(null)
     try {
-      const res = await apiClient.addColumn(id, name)
+      const res = await apiClient.addColumn(choiceList.id, name)
       setColumns(prev => [...prev, res.data])
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.response?.data) {
@@ -457,14 +457,14 @@ export default function ChoiceListDetailPage() {
   }
 
   const handleCommitColumnEdit = async () => {
-    if (!columnEdit || !id) { setColumnEdit(null); return }
+    if (!columnEdit || !choiceList) { setColumnEdit(null); return }
     const name = columnEdit.draft.trim()
     const col = columns.find(c => c.id === columnEdit.id)
     setColumnEdit(null)
     if (!name || !col || name === col.name) return
     setColumnError(null)
     try {
-      const res = await apiClient.updateColumn(id, columnEdit.id, name)
+      const res = await apiClient.updateColumn(choiceList.id, columnEdit.id, name)
       setColumns(prev => prev.map(c => c.id === columnEdit.id ? res.data : c))
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.response?.data) {
@@ -477,11 +477,11 @@ export default function ChoiceListDetailPage() {
   }
 
   const handleDeleteColumn = async (columnId: number) => {
-    if (!id) return
+    if (!choiceList) return
     if (!window.confirm('Delete this column? All values stored in it will be lost.')) return
     setColumnError(null)
     try {
-      await apiClient.removeColumn(id, columnId)
+      await apiClient.removeColumn(choiceList.id, columnId)
       setColumns(prev => prev.filter(c => c.id !== columnId))
       setChoices(prev => prev.map(c => ({ ...c, extra_values: c.extra_values.filter(ev => ev.column !== columnId) })))
     } catch (err: unknown) {
@@ -497,10 +497,10 @@ export default function ChoiceListDetailPage() {
   const handleCommitLabelColumnEdit = async () => {
     const draft = labelColumnEdit?.trim() ?? ''
     setLabelColumnEdit(null)
-    if (!draft || draft === labelColumnName || !id) return
+    if (!draft || draft === labelColumnName || !choiceList) return
     setLabelColumnError(null)
     try {
-      await apiClient.updateChoiceList(id, { label_column_name: draft })
+      await apiClient.updateChoiceList(choiceList.id, { label_column_name: draft })
       setLabelColumnName(draft)
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.response?.data) {
