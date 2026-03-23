@@ -5,7 +5,7 @@ import shortuuid
 
 class Project(models.Model):
     """Represents a KoboToolbox project"""
-    slug = models.CharField(max_length=255, unique=True, help_text="Project slug (e.g., aQQv2xc99EodN8pB8GZ6Jq)")
+    slug = models.CharField(max_length=255, help_text="Project slug (e.g., aQQv2xc99EodN8pB8GZ6Jq)")
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='projects')
@@ -14,6 +14,7 @@ class Project(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        unique_together = ('owner', 'slug')
 
     def __str__(self):
         return f"{self.name} ({self.slug})"
