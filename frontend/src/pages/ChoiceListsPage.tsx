@@ -113,10 +113,10 @@ export default function ChoiceListsPage() {
   // Delete project
   const [confirmDeleteProjectId, setConfirmDeleteProjectId] = useState<number | null>(null)
   const [deletingProjectId, setDeletingProjectId] = useState<number | null>(null)
-  const handleDeleteProject = async (id: number) => {
+  const handleDeleteProject = async (id: number, slug: string) => {
     setDeletingProjectId(id)
     try {
-      await apiClient.deleteProject(id)
+      await apiClient.deleteProject(slug)
       setConfirmDeleteProjectId(null)
       refetchProjects()
       refetch()
@@ -276,7 +276,7 @@ export default function ChoiceListsPage() {
                       <>
                         <span className="text-xs text-gray-500">Delete project{group.lists.length > 0 ? ` and ${group.lists.length} list${group.lists.length !== 1 ? 's' : ''}` : ''}?</span>
                         <button
-                          onClick={() => handleDeleteProject(group.id)}
+                          onClick={() => handleDeleteProject(group.id, group.project_slug)}
                           disabled={deletingProjectId === group.id}
                           className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
                         >
