@@ -496,8 +496,8 @@ class KoboAddChoiceView(APIView):
                     'value': label
                 })
 
-            # Generate short ID (9 chars alphanumeric)
-            value = shortuuid.ShortUUID().random(length=9)
+            # Generate name/value according to the list's name_generation setting
+            value = _generate_choice_name(choice_list, label)
 
             # Create new choice (order assigned below)
             choice = Choice.objects.create(
