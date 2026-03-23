@@ -1,6 +1,9 @@
 import csv
 import json
+import logging
 from io import StringIO
+
+logger = logging.getLogger('api')
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -87,6 +90,9 @@ class KoboCSVExportView(APIView):
         Returns a CSV with name,label columns.
         Looks up project by slug and choice list by slug.
         """
+        logger.info('CSV export | project=%s list=%s | ip=%s',
+                    project_id, choice_list_name,
+                    request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', '-')))
         try:
             project = get_object_or_404(Project, slug=project_id)
             choice_list = get_object_or_404(
@@ -135,6 +141,11 @@ class KoboAddChoiceView(APIView):
         Add a choice. Idempotent - returns success if already exists.
         Extracts first value from JSON body regardless of key.
         """
+        logger.info('ADD request | project=%s list=%s | ip=%s | content-type=%s | body=%r',
+                    project_id, choice_list_name,
+                    request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', '-')),
+                    request.META.get('CONTENT_TYPE', '-'),
+                    request.body[:500])
         try:
             project = get_object_or_404(Project, slug=project_id)
             choice_list = get_object_or_404(
@@ -155,6 +166,8 @@ class KoboAddChoiceView(APIView):
             label = next(iter(data.values())) if data else None
             
             if not label:
+                logger.warning('ADD failed - no label | project=%s list=%s | parsed_data=%r',
+                               project_id, choice_list_name, data)
                 return Response(
                     {
                         'success': False,
@@ -166,6 +179,7 @@ class KoboAddChoiceView(APIView):
             # Check if choice already exists (idempotent)
             existing = choice_list.choices.filter(label=label).first()
             if existing:
+                logger.info('ADD idempotent - already exists | label=%r | project=%s list=%s', label, project_id, choice_list_name)
                 return Response({
                     'success': True,
                     'message': 'Choice already exists',
@@ -183,6 +197,7 @@ class KoboAddChoiceView(APIView):
                 value=value
             )
 
+            logger.info('ADD success | label=%r value=%s | project=%s list=%s', label, value, project_id, choice_list_name)
             return Response({
                 'success': True,
                 'message': 'Choice added successfully',
@@ -191,6 +206,7 @@ class KoboAddChoiceView(APIView):
             }, status=status.HTTP_201_CREATED)
         
         except Exception as e:
+            logger.exception('ADD error | project=%s list=%s | error=%s', project_id, choice_list_name, e)
             return Response(
                 {
                     'success': False,

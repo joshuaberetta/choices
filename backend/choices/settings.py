@@ -186,6 +186,11 @@ LOGGING = {
             'handlers': ['console', 'file'],
             'level': 'INFO',
         },
+        'api': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
     },
 }
 
