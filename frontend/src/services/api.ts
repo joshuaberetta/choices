@@ -70,6 +70,8 @@ const apiClient = {
   updateChoice: (id: string | number, data: Partial<Choice>) =>
     API.patch<Choice>(`/choices/${id}/`, data),
   deleteChoice: (id: string | number) => API.delete(`/choices/${id}/`),
+  reorderChoices: (listId: string | number, items: { id: number; order: number }[]) =>
+    API.post(`/choice-lists/${listId}/reorder/`, items),
 };
 
 export default apiClient;

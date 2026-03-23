@@ -1,8 +1,134 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import axios from 'axios'
 import { Link, useParams } from 'react-router-dom'
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { useChoiceList } from '../hooks/useChoiceLists'
-import apiClient from '../services/api'
+import apiClient, { type Choice } from '../services/api'
+
+function SortableChoiceRow({
+  choice,
+  onDelete,
+  onSave,
+}: {
+  choice: Choice
+  onDelete: (id: number) => void
+  onSave: (id: number, field: 'label' | 'value', value: string) => Promise<void>
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: choice.id })
+  const [edit, setEdit] = useState<{ field: 'label' | 'value'; draft: string } | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  const startEdit = (field: 'label' | 'value') => {
+    setEdit({ field, draft: field === 'label' ? choice.label : choice.value })
+  }
+
+  const commitEdit = async () => {
+    if (!edit) return
+    const current = edit.field === 'label' ? choice.label : choice.value
+    if (edit.draft === current || !edit.draft.trim()) {
+      setEdit(null)
+      return
+    }
+    setSaving(true)
+    try {
+      await onSave(choice.id, edit.field, edit.draft.trim())
+    } finally {
+      setSaving(false)
+      setEdit(null)
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') commitEdit()
+    if (e.key === 'Escape') setEdit(null)
+  }
+
+  return (
+    <tr ref={setNodeRef} style={style} className="border-b border-gray-50 last:border-b-0 bg-white hover:bg-gray-50 transition-colors">
+      <td className="px-3 py-3 text-gray-300 w-8">
+        <span
+          className="cursor-grab active:cursor-grabbing select-none text-lg leading-none"
+          {...attributes}
+          {...listeners}
+        >
+          ⠿
+        </span>
+      </td>
+      <td className="px-5 py-3">
+        {edit?.field === 'label' ? (
+          <input
+            autoFocus
+            value={edit.draft}
+            onChange={e => setEdit({ ...edit, draft: e.target.value })}
+            onBlur={commitEdit}
+            onKeyDown={handleKeyDown}
+            disabled={saving}
+            className="border border-indigo-300 rounded px-2 py-0.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full"
+          />
+        ) : (
+          <span
+            className="cursor-pointer text-gray-900 hover:text-indigo-700 underline decoration-dotted underline-offset-2"
+            title="Click to edit label"
+            onClick={() => startEdit('label')}
+          >
+            {choice.label}
+          </span>
+        )}
+      </td>
+      <td className="px-5 py-3">
+        {edit?.field === 'value' ? (
+          <input
+            autoFocus
+            value={edit.draft}
+            onChange={e => setEdit({ ...edit, draft: e.target.value })}
+            onBlur={commitEdit}
+            onKeyDown={handleKeyDown}
+            disabled={saving}
+            className="font-mono text-xs border border-indigo-300 rounded px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-32"
+          />
+        ) : (
+          <code
+            className="font-mono text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded cursor-pointer hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+            title="Click to edit value"
+            onClick={() => startEdit('value')}
+          >
+            {choice.value}
+          </code>
+        )}
+      </td>
+      <td className="px-5 py-3 text-gray-400">{choice.order}</td>
+      <td className="px-5 py-3 text-right">
+        <button
+          onClick={() => onDelete(choice.id)}
+          className="px-2.5 py-1 text-xs text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+        >
+          Delete
+        </button>
+      </td>
+    </tr>
+  )
+}
 
 export default function ChoiceListDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -11,6 +137,62 @@ export default function ChoiceListDetailPage() {
   const [label, setLabel] = useState('')
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
+  const [choices, setChoices] = useState<Choice[]>([])
+  const [sortCol, setSortCol] = useState<'label' | 'value' | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  useEffect(() => {
+    if (choiceList?.choices) {
+      setChoices([...choiceList.choices].sort((a, b) => a.order - b.order))
+    }
+  }, [choiceList])
+
+  const sensors = useSensors(useSensor(PointerSensor))
+
+  const handleSortClick = async (col: 'label' | 'value') => {
+    // Cycle: unsorted → asc → desc → unsorted (drag re-enabled)
+    if (sortCol === col && sortDir === 'desc') {
+      setSortCol(null)
+      return
+    }
+    const newDir: 'asc' | 'desc' = sortCol === col ? 'desc' : 'asc'
+    setSortCol(col)
+    setSortDir(newDir)
+
+    const sorted = [...choices]
+      .sort((a, b) =>
+        a[col].localeCompare(b[col], undefined, { numeric: true, sensitivity: 'base' }) *
+        (newDir === 'asc' ? 1 : -1)
+      )
+      .map((c, i) => ({ ...c, order: i }))
+
+    setChoices(sorted)
+    try {
+      await apiClient.reorderChoices(id!, sorted.map(c => ({ id: c.id, order: c.order })))
+    } catch {
+      refetch()
+    }
+  }
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = choices.findIndex(c => c.id === active.id)
+    const newIndex = choices.findIndex(c => c.id === over.id)
+    const reordered = arrayMove(choices, oldIndex, newIndex).map((c, i) => ({ ...c, order: i }))
+    setChoices(reordered)
+    setSortCol(null)
+    try {
+      await apiClient.reorderChoices(id!, reordered.map(c => ({ id: c.id, order: c.order })))
+    } catch {
+      refetch()
+    }
+  }
+
+  const handleSaveField = async (choiceId: number, field: 'label' | 'value', value: string) => {
+    const updated = await apiClient.updateChoice(choiceId, { [field]: value })
+    setChoices(prev => prev.map(c => c.id === choiceId ? { ...c, [field]: updated.data[field] } : c))
+  }
 
   const handleAddChoice = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -37,7 +219,7 @@ export default function ChoiceListDetailPage() {
   const handleDelete = async (choiceId: number) => {
     try {
       await apiClient.deleteChoice(choiceId)
-      refetch()
+      setChoices(prev => prev.filter(c => c.id !== choiceId))
     } catch {
       // silently ignore
     }
@@ -104,7 +286,7 @@ export default function ChoiceListDetailPage() {
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <h2 className="font-semibold text-gray-800">
             Choices
-            <span className="ml-2 text-gray-400 font-normal text-sm">({choiceList.choices?.length ?? 0})</span>
+            <span className="ml-2 text-gray-400 font-normal text-sm">({choices.length})</span>
           </h2>
           <form onSubmit={handleAddChoice} className="flex gap-2">
             <input
@@ -128,40 +310,56 @@ export default function ChoiceListDetailPage() {
           <p className="px-5 py-2 text-red-600 text-sm bg-red-50 border-b border-red-100">{addError}</p>
         )}
 
-        {!choiceList.choices || choiceList.choices.length === 0 ? (
+        {choices.length === 0 ? (
           <div className="text-center py-12 text-gray-400 text-sm">
             No choices yet — add one above
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="px-5 py-3 text-left font-semibold text-gray-600">Label</th>
-                <th className="px-5 py-3 text-left font-semibold text-gray-600">Value (ID)</th>
-                <th className="px-5 py-3 text-left font-semibold text-gray-600">Order</th>
-                <th className="px-5 py-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {choiceList.choices.map(choice => (
-                <tr key={choice.id} className="border-b border-gray-50 last:border-b-0 hover:bg-gray-50 transition-colors">
-                  <td className="px-5 py-3 text-gray-900">{choice.label}</td>
-                  <td className="px-5 py-3">
-                    <code className="font-mono text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">{choice.value}</code>
-                  </td>
-                  <td className="px-5 py-3 text-gray-400">{choice.order}</td>
-                  <td className="px-5 py-3 text-right">
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50">
+                  <th className="px-3 py-3 w-8"></th>
+                  <th className="px-5 py-3 text-left">
                     <button
-                      onClick={() => handleDelete(choice.id)}
-                      className="px-2.5 py-1 text-xs text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+                      onClick={() => handleSortClick('label')}
+                      className="flex items-center gap-1 font-semibold text-gray-600 hover:text-indigo-700 transition-colors"
                     >
-                      Delete
+                      Label
+                      <span className="text-xs w-4 text-center">
+                        {sortCol === 'label' ? (sortDir === 'asc' ? '↑' : '↓ ×') : <span className="text-gray-300">↕</span>}
+                      </span>
                     </button>
-                  </td>
+                  </th>
+                  <th className="px-5 py-3 text-left">
+                    <button
+                      onClick={() => handleSortClick('value')}
+                      className="flex items-center gap-1 font-semibold text-gray-600 hover:text-indigo-700 transition-colors"
+                    >
+                      Value (ID)
+                      <span className="text-xs w-4 text-center">
+                        {sortCol === 'value' ? (sortDir === 'asc' ? '↑' : '↓ ×') : <span className="text-gray-300">↕</span>}
+                      </span>
+                    </button>
+                  </th>
+                  <th className="px-5 py-3 text-left font-semibold text-gray-600">Order</th>
+                  <th className="px-5 py-3"></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <SortableContext items={choices.map(c => c.id)} strategy={verticalListSortingStrategy}>
+                <tbody>
+                  {choices.map(choice => (
+                    <SortableChoiceRow
+                      key={choice.id}
+                      choice={choice}
+                      onDelete={handleDelete}
+                      onSave={handleSaveField}
+                    />
+                  ))}
+                </tbody>
+              </SortableContext>
+            </table>
+          </DndContext>
         )}
       </div>
     </div>

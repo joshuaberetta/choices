@@ -70,6 +70,23 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
         choice = Choice.objects.create(choice_list=choice_list, label=label, value=value)
         return Response(ChoiceSerializer(choice).data, status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['post'])
+    def reorder(self, request, pk=None):
+        """Bulk-update order for choices in a list. Expects [{id, order}, ...]."""
+        choice_list = self.get_object()
+        items = request.data
+        if not isinstance(items, list):
+            return Response({'error': 'expected a list'}, status=status.HTTP_400_BAD_REQUEST)
+        ids = [item.get('id') for item in items if isinstance(item, dict) and 'id' in item]
+        choices_qs = Choice.objects.filter(id__in=ids, choice_list=choice_list)
+        choices_map = {c.id: c for c in choices_qs}
+        if len(choices_map) != len(ids):
+            return Response({'error': 'invalid choice ids'}, status=status.HTTP_400_BAD_REQUEST)
+        for item in items:
+            choices_map[item['id']].order = item['order']
+        Choice.objects.bulk_update(list(choices_map.values()), ['order'])
+        return Response({'status': 'ok'})
+
 
 class ChoiceViewSet(viewsets.ModelViewSet):
     """ViewSet for Choice CRUD operations"""
