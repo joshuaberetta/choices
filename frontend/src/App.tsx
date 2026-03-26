@@ -8,6 +8,8 @@ import HelpPage from './pages/HelpPage'
 import PublicProjectDetailPage from './pages/PublicProjectDetailPage'
 import CollectionDetailPage from './pages/CollectionDetailPage'
 import PublicCollectionDetailPage from './pages/PublicCollectionDetailPage'
+import MyCollectionsPage from './pages/MyCollectionsPage'
+import PublicCollectionsPage from './pages/PublicCollectionsPage'
 import { useAuthStore } from './store/authStore'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -38,6 +40,14 @@ export default function App() {
               </div>
             </Link>
             <div className="flex items-center gap-4">
+              {user && (
+                <Link
+                  to="/collections"
+                  className="text-indigo-200 hover:text-white text-sm transition-colors"
+                >
+                  Collections
+                </Link>
+              )}
               <Link
                 to="/help"
                 className="text-indigo-200 hover:text-white text-sm transition-colors"
@@ -62,9 +72,9 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/public/projects/:id" element={<PublicProjectDetailPage />} />
-            <Route path="/collections/public" element={<Navigate to="/" replace />} />
+            <Route path="/collections/public" element={<PublicCollectionsPage />} />
             <Route path="/collections/public/:id" element={<PublicCollectionDetailPage />} />
-            <Route path="/collections" element={<Navigate to="/" replace />} />
+            <Route path="/collections" element={<ProtectedRoute><MyCollectionsPage /></ProtectedRoute>} />
             <Route path="/collections/:id" element={<ProtectedRoute><CollectionDetailPage /></ProtectedRoute>} />
             <Route path="/" element={<ProtectedRoute><ChoiceListsPage /></ProtectedRoute>} />
             <Route path="/:projectSlug/:choiceListSlug" element={<ProtectedRoute><ChoiceListDetailPage /></ProtectedRoute>} />

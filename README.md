@@ -194,7 +194,7 @@ Base path: `/api/` — requires session authentication (see [Authentication API]
 | `DELETE` | `/api/projects/{slug}/` | Delete a project (owner only) |
 | `GET` | `/api/projects/{slug}/shares/` | List users this project is shared with |
 | `POST` | `/api/projects/{slug}/share/` | Share with a user: `{username}` |
-| `POST` | `/api/projects/{slug}/unshare/` | Remove a share: `{username}` |
+| `DELETE` | `/api/projects/{slug}/share/{username}/` | Remove a share for that user |
 | `GET` | `/api/projects/public/` | Public project discovery (no auth; supports `?search=`) |
 | `GET` | `/api/projects/public/{id}/` | Get a public project with its choice lists and choices (no auth) |
 
@@ -334,7 +334,7 @@ Sharing is managed from the **Settings** panel on the Projects page (owner only)
 
 - `GET /api/projects/{slug}/shares/` — list current shares
 - `POST /api/projects/{slug}/share/` — add a share: `{"username": "..."}`
-- `POST /api/projects/{slug}/unshare/` — remove a share: `{"username": "..."}`
+- `DELETE /api/projects/{slug}/share/{username}/` — remove a share for that user
 
 ### Webhook authentication (`require_auth`)
 
