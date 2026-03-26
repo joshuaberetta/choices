@@ -7,6 +7,7 @@ import apiClient, {
   type ProjectShare,
   type Collection,
   type PublicCollection,
+  type ChoiceList,
 } from '../services/api'
 
 // ── Combined Public Tab ───────────────────────────────────────────────────────
@@ -275,7 +276,7 @@ export default function ChoiceListsPage() {
       role: 'owner' | 'shared'
       owner_username: string | null
       collection_memberships: { id: number; name: string; slug: string }[]
-      lists: typeof choiceLists
+      lists: ChoiceList[]
     }>()
     for (const p of projects) {
       map.set(p.id, {

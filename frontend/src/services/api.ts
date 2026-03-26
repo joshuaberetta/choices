@@ -181,10 +181,10 @@ const apiClient = {
     let results: Project[] = [];
     let relUrl: string | null = '/projects/';
     while (relUrl) {
-      const res = await API.get<PaginatedResponse<Project>>(relUrl);
+      const res: { data: PaginatedResponse<Project> } = await API.get<PaginatedResponse<Project>>(relUrl);
       results = [...results, ...res.data.results];
       if (res.data.next) {
-        const parsed = new URL(res.data.next);
+        const parsed: URL = new URL(res.data.next);
         relUrl = parsed.pathname.replace(/^\/api/, '') + parsed.search;
       } else {
         relUrl = null;
