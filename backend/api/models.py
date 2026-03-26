@@ -135,13 +135,12 @@ class Collection(models.Model):
 
 
 class CollectionProject(models.Model):
-    """M2M join between Collection and Project with ordering"""
+    """M2M join between Collection and Project with ordering; a project belongs to at most one collection"""
     collection = models.ForeignKey(Collection, on_delete=models.CASCADE, related_name='collection_projects')
-    project = models.ForeignKey(Project, on_delete=models.PROTECT, related_name='collection_memberships')
+    project = models.OneToOneField(Project, on_delete=models.PROTECT, related_name='collection_membership')
     order = models.PositiveIntegerField(default=0)
 
     class Meta:
-        unique_together = ('collection', 'project')
         ordering = ['order']
 
     def __str__(self):

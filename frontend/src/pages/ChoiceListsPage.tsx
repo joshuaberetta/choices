@@ -395,11 +395,18 @@ export default function ChoiceListsPage() {
     }
   }
 
-  const handleMoveProject = async (projectId: number, collectionId: number, add: boolean) => {
+  const handleMoveProject = async (projectId: number, targetCollectionId: number, add: boolean, currentCollectionId?: number) => {
     setMovingProject(true)
     try {
-      if (add) await apiClient.addProjectToCollection(collectionId, projectId)
-      else await apiClient.removeProjectFromCollection(collectionId, projectId)
+      if (add) {
+        // If already in a different collection, remove from it first (atomic move)
+        if (currentCollectionId != null && currentCollectionId !== targetCollectionId) {
+          await apiClient.removeProjectFromCollection(currentCollectionId, projectId)
+        }
+        await apiClient.addProjectToCollection(targetCollectionId, projectId)
+      } else {
+        await apiClient.removeProjectFromCollection(targetCollectionId, projectId)
+      }
       setMoveMenuProjectId(null)
       await Promise.all([fetchCollections(), refetchProjects()])
     } catch { /* ignore */ } finally {
@@ -579,7 +586,7 @@ export default function ChoiceListsPage() {
                     : 'border-gray-200 text-gray-500 hover:bg-gray-100'
                 }`}
               >
-                📁 {group.collection_memberships.length > 0 ? `(${group.collection_memberships.length})` : 'Move'}
+                📁 {group.collection_memberships[0]?.name ?? 'Move'}
               </button>
 
               {moveMenuProjectId === group.id && (
@@ -595,7 +602,7 @@ export default function ChoiceListsPage() {
                       return (
                         <button
                           key={c.id}
-                          onClick={() => handleMoveProject(group.id, c.id, !inThis)}
+                          onClick={() => handleMoveProject(group.id, c.id, !inThis, group.collection_memberships[0]?.id)}
                           disabled={movingProject}
                           className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-xs hover:bg-gray-50 transition-colors disabled:opacity-50"
                         >

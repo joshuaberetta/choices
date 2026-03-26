@@ -76,10 +76,11 @@ class ProjectSerializer(serializers.ModelSerializer):
         return 'shared'
 
     def get_collection_memberships(self, obj):
-        return [
-            {'id': cp.collection.id, 'name': cp.collection.name, 'slug': cp.collection.slug}
-            for cp in obj.collection_memberships.select_related('collection').order_by('order')
-        ]
+        try:
+            cp = obj.collection_membership
+            return [{'id': cp.collection.id, 'name': cp.collection.name, 'slug': cp.collection.slug}]
+        except Exception:
+            return []
 
     class Meta:
         model = Project

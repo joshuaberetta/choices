@@ -170,7 +170,10 @@ export default function CollectionDetailPage() {
 
   // Already-in-collection project IDs
   const memberIds = new Set(collection?.projects?.map(p => p.id) ?? [])
-  const availableProjects = myProjects.filter(p => !memberIds.has(p.id))
+  // Exclude projects already in this collection OR in any other collection
+  const availableProjects = myProjects.filter(p =>
+    !memberIds.has(p.id) && (!p.collection_memberships || p.collection_memberships.length === 0)
+  )
 
   if (loading) return <div className="flex items-center justify-center py-16 text-gray-400">Loading…</div>
   if (error || !collection) return (

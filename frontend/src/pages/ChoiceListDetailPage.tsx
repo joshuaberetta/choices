@@ -103,12 +103,14 @@ function SortableChoiceRow({
   onDelete,
   onSave,
   onSaveExtra,
+  dndDisabled,
 }: {
   choice: Choice
   columns: ChoiceListColumn[]
   onDelete: (id: number) => void
   onSave: (id: number, field: 'label' | 'value', value: string) => Promise<void>
   onSaveExtra: (id: number, columnId: number, value: string) => Promise<void>
+  dndDisabled?: boolean
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: choice.id })
@@ -151,13 +153,17 @@ function SortableChoiceRow({
       isProtected ? 'bg-amber-50 hover:bg-amber-100' : 'bg-white hover:bg-gray-50'
     }`}>
       <td className="px-3 py-3 text-gray-300 w-8">
-        <span
-          className="cursor-grab active:cursor-grabbing select-none text-lg leading-none"
-          {...attributes}
-          {...listeners}
-        >
-          ⠿
-        </span>
+        {dndDisabled ? (
+          <span className="text-gray-200 select-none text-lg leading-none">⠿</span>
+        ) : (
+          <span
+            className="cursor-grab active:cursor-grabbing select-none text-lg leading-none"
+            {...attributes}
+            {...listeners}
+          >
+            ⠿
+          </span>
+        )}
       </td>
       {/* Label */}
       <td className="px-5 py-3">
@@ -256,6 +262,11 @@ export default function ChoiceListDetailPage() {
   const [importError, setImportError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
 
+  // Choice search + pagination
+  const [choiceSearch, setChoiceSearch] = useState('')
+  const [choicePage, setChoicePage] = useState(1)
+  const [choicePageSize, setChoicePageSize] = useState<25 | 50 | 100>(50)
+
   // Label column name
   const [labelColumnName, setLabelColumnName] = useState('label')
   const [labelColumnEdit, setLabelColumnEdit] = useState<string | null>(null)
@@ -286,6 +297,9 @@ export default function ChoiceListDetailPage() {
           .sort((a, b) => a.order - b.order)
           .map(c => ({ ...c, extra_values: c.extra_values ?? [] }))
       )
+      // Reset search + pagination when list data reloads
+      setChoiceSearch('')
+      setChoicePage(1)
     }
     if (choiceList?.columns) {
       setColumns(choiceList.columns)
@@ -301,6 +315,21 @@ export default function ChoiceListDetailPage() {
   }, [choiceList])
 
   const sensors = useSensors(useSensor(PointerSensor))
+
+  // Derived: filtered + paginated choices
+  const filteredChoices = choiceSearch
+    ? choices.filter(c =>
+        c.label.toLowerCase().includes(choiceSearch.toLowerCase()) ||
+        c.value.toLowerCase().includes(choiceSearch.toLowerCase())
+      )
+    : choices
+  const choiceTotalPages = Math.max(1, Math.ceil(filteredChoices.length / choicePageSize))
+  const clampedPage = Math.min(choicePage, choiceTotalPages)
+  const pagedChoices = filteredChoices.slice((clampedPage - 1) * choicePageSize, clampedPage * choicePageSize)
+  const dndEnabled = !choiceSearch && filteredChoices.length <= choicePageSize
+
+  // Reset to page 1 when search term or page size changes
+  useEffect(() => { setChoicePage(1) }, [choiceSearch, choicePageSize])
 
   const handleSortClick = async (col: 'label' | 'value') => {
     if (sortCol === col && sortDir === 'desc') {
@@ -697,7 +726,9 @@ export default function ChoiceListDetailPage() {
           <div className="flex items-center gap-3">
             <h2 className="font-semibold text-gray-800">
               Choices
-              <span className="ml-2 text-gray-400 font-normal text-sm">({choices.length})</span>
+              <span className="ml-2 text-gray-400 font-normal text-sm">
+                {choiceSearch ? `${filteredChoices.length} of ${choices.length}` : choices.length}
+              </span>
             </h2>
             {addingColumn ? (
               <input
@@ -751,6 +782,45 @@ export default function ChoiceListDetailPage() {
           </div>
         </div>
 
+        {/* Search + page size row */}
+        {choices.length > 0 && (
+          <div className="flex items-center gap-2 px-5 py-2.5 border-b border-gray-100 bg-gray-50/50">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                placeholder="Search by label or name…"
+                value={choiceSearch}
+                onChange={e => setChoiceSearch(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg pl-8 pr-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <svg className="absolute left-2.5 top-2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+              </svg>
+              {choiceSearch && (
+                <button onClick={() => setChoiceSearch('')} className="absolute right-2.5 top-2 text-gray-400 hover:text-gray-600">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <span className="text-xs text-gray-400 mr-1">Per page:</span>
+              {([25, 50, 100] as const).map(n => (
+                <button
+                  key={n}
+                  onClick={() => setChoicePageSize(n)}
+                  className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                    choicePageSize === n ? 'bg-indigo-600 text-white' : 'border border-gray-200 text-gray-500 hover:bg-gray-100'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {addError && (
           <p className="px-5 py-2 text-red-600 text-sm bg-red-50 border-b border-red-100">{addError}</p>
         )}
@@ -765,8 +835,15 @@ export default function ChoiceListDetailPage() {
           <div className="text-center py-12 text-gray-400 text-sm">
             No choices yet — add one above
           </div>
+        ) : filteredChoices.length === 0 ? (
+          <div className="text-center py-12 text-gray-400 text-sm">
+            No choices match “<span className="font-medium text-gray-600">{choiceSearch}</span>”
+            <span className="block mt-1">
+              <button onClick={() => setChoiceSearch('')} className="text-indigo-600 hover:underline text-xs">Clear search</button>
+            </span>
+          </div>
         ) : (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={dndEnabled ? handleDragEnd : () => {}}>
             <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -867,9 +944,9 @@ export default function ChoiceListDetailPage() {
                   <th className="px-5 py-3"></th>
                 </tr>
               </thead>
-              <SortableContext items={choices.map(c => c.id)} strategy={verticalListSortingStrategy}>
+              <SortableContext items={pagedChoices.map(c => c.id)} strategy={verticalListSortingStrategy}>
                 <tbody>
-                  {choices.map(choice => (
+                  {pagedChoices.map(choice => (
                     <SortableChoiceRow
                       key={choice.id}
                       choice={choice}
@@ -877,6 +954,7 @@ export default function ChoiceListDetailPage() {
                       onDelete={handleDelete}
                       onSave={handleSaveField}
                       onSaveExtra={handleSaveExtra}
+                      dndDisabled={!dndEnabled}
                     />
                   ))}
                 </tbody>
@@ -884,6 +962,37 @@ export default function ChoiceListDetailPage() {
             </table>
             </div>
           </DndContext>
+        )}
+
+        {/* Pagination nav */}
+        {choices.length > 0 && filteredChoices.length > 0 && choiceTotalPages > 1 && (
+          <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100">
+            <button
+              onClick={() => setChoicePage(p => Math.max(1, p - 1))}
+              disabled={clampedPage <= 1}
+              className="flex items-center gap-1 px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+              Prev
+            </button>
+            <span className="text-sm text-gray-500">
+              Page <span className="font-semibold text-gray-700">{clampedPage}</span> of{' '}
+              <span className="font-semibold text-gray-700">{choiceTotalPages}</span>
+              <span className="hidden sm:inline text-gray-400"> · {filteredChoices.length} choice{filteredChoices.length !== 1 ? 's' : ''}</span>
+            </span>
+            <button
+              onClick={() => setChoicePage(p => Math.min(choiceTotalPages, p + 1))}
+              disabled={clampedPage >= choiceTotalPages}
+              className="flex items-center gap-1 px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Next
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
         )}
       </div>
     </div>

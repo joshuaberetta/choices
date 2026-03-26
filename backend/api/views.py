@@ -953,6 +953,9 @@ class CollectionViewSet(viewsets.ModelViewSet):
             Q(owner=request.user) | Q(shares__user=request.user),
             id=project_id,
         )
+        # A project may only belong to one collection
+        if CollectionProject.objects.filter(project=project).exclude(collection=collection).exists():
+            return Response({'error': 'This project is already in another collection'}, status=status.HTTP_400_BAD_REQUEST)
         order = collection.collection_projects.count()
         _, created = CollectionProject.objects.get_or_create(
             collection=collection, project=project,
