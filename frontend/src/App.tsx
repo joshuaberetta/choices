@@ -6,6 +6,8 @@ import LoginPage from './pages/LoginPage'
 import ChangePasswordModal from './components/ChangePasswordModal'
 import HelpPage from './pages/HelpPage'
 import PublicProjectDetailPage from './pages/PublicProjectDetailPage'
+import CollectionDetailPage from './pages/CollectionDetailPage'
+import PublicCollectionDetailPage from './pages/PublicCollectionDetailPage'
 import { useAuthStore } from './store/authStore'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -45,12 +47,6 @@ export default function App() {
               {user && (
                 <>
                   <span className="text-indigo-200 text-sm">{user.username}</span>
-                  {/* <button
-                    onClick={() => setShowChangePassword(true)}
-                    className="text-indigo-200 hover:text-white text-sm transition-colors"
-                  >
-                    Change password
-                  </button> */}
                   <button
                     onClick={() => logout()}
                     className="bg-white/10 hover:bg-white/20 text-white text-sm px-3 py-1.5 rounded transition-colors"
@@ -66,6 +62,10 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/public/projects/:id" element={<PublicProjectDetailPage />} />
+            <Route path="/collections/public" element={<Navigate to="/" replace />} />
+            <Route path="/collections/public/:id" element={<PublicCollectionDetailPage />} />
+            <Route path="/collections" element={<Navigate to="/" replace />} />
+            <Route path="/collections/:id" element={<ProtectedRoute><CollectionDetailPage /></ProtectedRoute>} />
             <Route path="/" element={<ProtectedRoute><ChoiceListsPage /></ProtectedRoute>} />
             <Route path="/:projectSlug/:choiceListSlug" element={<ProtectedRoute><ChoiceListDetailPage /></ProtectedRoute>} />
             <Route path="/help" element={<HelpPage />} />

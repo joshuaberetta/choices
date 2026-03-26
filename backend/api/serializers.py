@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.db.models import Count
-from .models import Project, ChoiceList, Choice, ChoiceListColumn, ChoiceExtraValue, ProjectShare
+from .models import Project, ChoiceList, Choice, ChoiceListColumn, ChoiceExtraValue, ProjectShare, Collection, CollectionProject
 
 
 class ChoiceListColumnSerializer(serializers.ModelSerializer):
@@ -67,6 +67,7 @@ class ProjectSerializer(serializers.ModelSerializer):
     choice_lists = ChoiceListSerializer(many=True, read_only=True)
     role = serializers.SerializerMethodField()
     owner_username = serializers.CharField(source='owner.username', read_only=True)
+    collection_memberships = serializers.SerializerMethodField()
 
     def get_role(self, obj):
         request = self.context.get('request')
@@ -74,10 +75,16 @@ class ProjectSerializer(serializers.ModelSerializer):
             return 'owner'
         return 'shared'
 
+    def get_collection_memberships(self, obj):
+        return [
+            {'id': cp.collection.id, 'name': cp.collection.name, 'slug': cp.collection.slug}
+            for cp in obj.collection_memberships.select_related('collection').order_by('order')
+        ]
+
     class Meta:
         model = Project
-        fields = ['id', 'slug', 'name', 'description', 'owner', 'owner_username', 'is_public', 'role', 'created_at', 'updated_at', 'choice_lists']
-        read_only_fields = ['id', 'owner', 'owner_username', 'role', 'created_at', 'updated_at']
+        fields = ['id', 'slug', 'name', 'description', 'owner', 'owner_username', 'is_public', 'role', 'created_at', 'updated_at', 'choice_lists', 'collection_memberships']
+        read_only_fields = ['id', 'owner', 'owner_username', 'role', 'created_at', 'updated_at', 'collection_memberships']
 
 
 class PublicChoiceSerializer(serializers.ModelSerializer):
@@ -120,3 +127,90 @@ class PublicProjectSerializer(serializers.ModelSerializer):
     class Meta:
         model = Project
         fields = ['id', 'slug', 'name', 'description', 'owner_username', 'list_count', 'updated_at', 'choice_lists']
+
+
+# ---------------------------------------------------------------------------
+# Collection serializers
+# ---------------------------------------------------------------------------
+
+class CollectionProjectSummarySerializer(serializers.ModelSerializer):
+    """Minimal project info shown inside a collection"""
+    id = serializers.IntegerField(source='project.id', read_only=True)
+    slug = serializers.CharField(source='project.slug', read_only=True)
+    name = serializers.CharField(source='project.name', read_only=True)
+    description = serializers.CharField(source='project.description', read_only=True)
+    owner_username = serializers.CharField(source='project.owner.username', read_only=True)
+    updated_at = serializers.DateTimeField(source='project.updated_at', read_only=True)
+    list_count = serializers.SerializerMethodField()
+    order = serializers.IntegerField(read_only=True)
+
+    def get_list_count(self, obj):
+        return obj.project.choice_lists.count()
+
+    class Meta:
+        model = CollectionProject
+        fields = ['id', 'slug', 'name', 'description', 'owner_username', 'updated_at', 'list_count', 'order']
+
+
+class CollectionSerializer(serializers.ModelSerializer):
+    """Collection with member project list"""
+    owner_username = serializers.CharField(source='owner.username', read_only=True)
+    role = serializers.SerializerMethodField()
+    project_count = serializers.SerializerMethodField()
+    projects = CollectionProjectSummarySerializer(source='collection_projects', many=True, read_only=True)
+
+    def get_role(self, obj):
+        request = self.context.get('request')
+        if request and request.user == obj.owner:
+            return 'owner'
+        return 'shared'
+
+    def get_project_count(self, obj):
+        if hasattr(obj, 'project_count_annotation'):
+            return obj.project_count_annotation
+        return obj.collection_projects.count()
+
+    class Meta:
+        model = Collection
+        fields = ['id', 'slug', 'name', 'description', 'owner', 'owner_username', 'is_public', 'role', 'project_count', 'created_at', 'updated_at', 'projects']
+        read_only_fields = ['id', 'owner', 'owner_username', 'role', 'project_count', 'created_at', 'updated_at']
+
+
+class PublicCollectionProjectSerializer(serializers.ModelSerializer):
+    """Project entry shown in a public collection — lists included"""
+    id = serializers.IntegerField(source='project.id', read_only=True)
+    slug = serializers.CharField(source='project.slug', read_only=True)
+    name = serializers.CharField(source='project.name', read_only=True)
+    description = serializers.CharField(source='project.description', read_only=True)
+    owner_username = serializers.CharField(source='project.owner.username', read_only=True)
+    updated_at = serializers.DateTimeField(source='project.updated_at', read_only=True)
+    list_count = serializers.SerializerMethodField()
+    choice_lists = serializers.SerializerMethodField()
+
+    def get_list_count(self, obj):
+        return obj.project.choice_lists.count()
+
+    def get_choice_lists(self, obj):
+        return PublicChoiceListSerializer(
+            obj.project.choice_lists.all(), many=True
+        ).data
+
+    class Meta:
+        model = CollectionProject
+        fields = ['id', 'slug', 'name', 'description', 'owner_username', 'updated_at', 'list_count', 'choice_lists']
+
+
+class PublicCollectionSerializer(serializers.ModelSerializer):
+    """Read-only collection for public discovery"""
+    owner_username = serializers.CharField(source='owner.username', read_only=True)
+    project_count = serializers.SerializerMethodField()
+    projects = PublicCollectionProjectSerializer(source='collection_projects', many=True, read_only=True)
+
+    def get_project_count(self, obj):
+        if hasattr(obj, 'project_count_annotation'):
+            return obj.project_count_annotation
+        return obj.collection_projects.count()
+
+    class Meta:
+        model = Collection
+        fields = ['id', 'slug', 'name', 'description', 'owner_username', 'is_public', 'project_count', 'updated_at', 'projects']

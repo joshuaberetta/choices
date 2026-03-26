@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     ProjectViewSet, ChoiceListViewSet, ChoiceViewSet,
     PublicProjectViewSet,
+    CollectionViewSet, PublicCollectionViewSet,
     CSRFView, LoginView, LogoutView, MeView, ChangePasswordView,
 )
 
@@ -11,12 +12,17 @@ router = DefaultRouter()
 router.register(r'projects', ProjectViewSet, basename='project')
 router.register(r'choice-lists', ChoiceListViewSet, basename='choice-list')
 router.register(r'choices', ChoiceViewSet, basename='choice')
+router.register(r'collections', CollectionViewSet, basename='collection')
 
 urlpatterns = [
     # Public project endpoints — must appear BEFORE router.urls so that
     # /api/projects/public/ takes precedence over the slug pattern.
     path('projects/public/', PublicProjectViewSet.as_view({'get': 'list'}), name='public-projects-list'),
     path('projects/public/<int:pk>/', PublicProjectViewSet.as_view({'get': 'retrieve'}), name='public-projects-detail'),
+    # Public collection endpoints — must appear BEFORE router.urls so that
+    # /api/collections/public/ takes precedence over the id pattern.
+    path('collections/public/', PublicCollectionViewSet.as_view({'get': 'list'}), name='public-collections-list'),
+    path('collections/public/<int:pk>/', PublicCollectionViewSet.as_view({'get': 'retrieve'}), name='public-collections-detail'),
     path('', include(router.urls)),
     path('auth/csrf/', CSRFView.as_view(), name='auth-csrf'),
     path('auth/login/', LoginView.as_view(), name='auth-login'),

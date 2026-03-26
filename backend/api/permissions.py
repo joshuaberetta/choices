@@ -20,3 +20,17 @@ class IsProjectWriteAuthorized(BasePermission):
             project.owner == request.user
             or project.shares.filter(user=request.user).exists()
         )
+
+
+class IsCollectionAuthorized(BasePermission):
+    """
+    Grants write access to collection management actions.
+    Owner or CollectionShare member: add/remove projects.
+    Owner only: rename, toggle is_public, manage shares, delete.
+    """
+
+    def has_object_permission(self, request, view, obj):
+        # Safe methods are handled by DRF's default (queryset already scoped)
+        if request.user == obj.owner:
+            return True
+        return obj.shares.filter(user=request.user).exists()

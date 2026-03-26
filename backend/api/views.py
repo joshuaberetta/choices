@@ -885,3 +885,153 @@ class PublicProjectViewSet(viewsets.ReadOnlyModelViewSet):
             )
         return qs.order_by('-updated_at')
 
+
+# ---------------------------------------------------------------------------
+# Collections
+# ---------------------------------------------------------------------------
+
+from .models import Collection, CollectionProject, CollectionShare
+from .serializers import CollectionSerializer, PublicCollectionSerializer
+
+
+class CollectionViewSet(viewsets.ModelViewSet):
+    """ViewSet for Collection CRUD and management actions."""
+    serializer_class = CollectionSerializer
+    lookup_field = 'id'
+
+    def get_queryset(self):
+        user = self.request.user
+        from django.db.models import Count
+        return Collection.objects.filter(
+            Q(owner=user) | Q(shares__user=user)
+        ).distinct().annotate(
+            project_count_annotation=Count('collection_projects')
+        ).prefetch_related(
+            'collection_projects__project__owner',
+            'collection_projects__project__choice_lists',
+        )
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self.request.user)
+
+    def _require_owner(self, collection):
+        if collection.owner != self.request.user:
+            raise PermissionDenied("Only the collection owner can perform this action.")
+
+    def _require_member(self, collection):
+        """Allow owner or share member. Raises PermissionDenied otherwise."""
+        if collection.owner == self.request.user:
+            return
+        if not collection.shares.filter(user=self.request.user).exists():
+            raise PermissionDenied("You do not have access to this collection.")
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        # is_public, name, description, slug — owner only
+        owner_only_fields = {'is_public', 'name', 'description', 'slug'}
+        if owner_only_fields & set(request.data.keys()):
+            self._require_owner(instance)
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self._require_owner(instance)
+        return super().destroy(request, *args, **kwargs)
+
+    # ------------------------------------------------------------------ projects
+
+    @action(detail=True, methods=['post'], url_path='add_project')
+    def add_project(self, request, id=None):
+        collection = self.get_object()
+        self._require_member(collection)
+        project_id = request.data.get('project_id')
+        if not project_id:
+            return Response({'error': 'project_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+        # Requester must own or have access to the project
+        project = get_object_or_404(
+            Project,
+            Q(owner=request.user) | Q(shares__user=request.user),
+            id=project_id,
+        )
+        order = collection.collection_projects.count()
+        _, created = CollectionProject.objects.get_or_create(
+            collection=collection, project=project,
+            defaults={'order': order},
+        )
+        if not created:
+            return Response({'error': 'Project is already in this collection'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(CollectionSerializer(collection, context={'request': request}).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['delete'], url_path='remove_project/(?P<project_id>[0-9]+)')
+    def remove_project(self, request, id=None, project_id=None):
+        collection = self.get_object()
+        self._require_member(collection)
+        deleted, _ = CollectionProject.objects.filter(collection=collection, project_id=project_id).delete()
+        if not deleted:
+            return Response({'error': 'Project not found in this collection'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # ------------------------------------------------------------------ shares
+
+    @action(detail=True, methods=['get'], url_path='shares')
+    def shares(self, request, id=None):
+        collection = self.get_object()
+        self._require_owner(collection)
+        share_list = collection.shares.select_related('user').order_by('created_at')
+        data = [{'username': s.user.username, 'created_at': s.created_at} for s in share_list]
+        return Response(data)
+
+    @action(detail=True, methods=['post'], url_path='share')
+    def share(self, request, id=None):
+        collection = self.get_object()
+        self._require_owner(collection)
+        username = (request.data.get('username') or '').strip()
+        if not username:
+            return Response({'error': 'username is required'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            user = User.objects.get(username=username)
+        except User.DoesNotExist:
+            return Response({'error': f'User "{username}" not found'}, status=status.HTTP_400_BAD_REQUEST)
+        if user == collection.owner:
+            return Response({'error': 'Cannot share a collection with its own owner'}, status=status.HTTP_400_BAD_REQUEST)
+        _, created = CollectionShare.objects.get_or_create(collection=collection, user=user)
+        if not created:
+            return Response({'error': f'Collection is already shared with "{username}"'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'username': username}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['delete'], url_path='share/(?P<username>[^/.]+)')
+    def unshare(self, request, id=None, username=None):
+        collection = self.get_object()
+        self._require_owner(collection)
+        deleted, _ = CollectionShare.objects.filter(collection=collection, user__username=username).delete()
+        if not deleted:
+            return Response({'error': f'No share found for "{username}"'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class PublicCollectionViewSet(viewsets.ReadOnlyModelViewSet):
+    """Read-only viewset for publicly discoverable collections. No authentication required."""
+    serializer_class = PublicCollectionSerializer
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get_queryset(self):
+        from django.db.models import Count
+        qs = Collection.objects.filter(is_public=True).annotate(
+            project_count_annotation=Count('collection_projects')
+        ).prefetch_related(
+            'collection_projects__project__owner',
+            'collection_projects__project__choice_lists',
+            'collection_projects__project__choice_lists__columns',
+            'collection_projects__project__choice_lists__choices',
+            'collection_projects__project__choice_lists__choices__extra_values',
+        )
+        search = self.request.query_params.get('search', '').strip()
+        if search:
+            qs = qs.filter(
+                Q(name__icontains=search)
+                | Q(description__icontains=search)
+                | Q(owner__username__icontains=search)
+            )
+        return qs.order_by('-updated_at')
+

@@ -95,6 +95,16 @@ const sections: Section[] = [
     label: 'Public Projects',
   },
   {
+    id: 'collections',
+    label: 'Collections',
+    subsections: [
+      { id: 'collections-create', label: 'Creating a collection' },
+      { id: 'collections-projects', label: 'Adding projects' },
+      { id: 'collections-sharing', label: 'Sharing collections' },
+      { id: 'collections-public', label: 'Public collections' },
+    ],
+  },
+  {
     id: 'account',
     label: 'Your Account',
   },
@@ -716,6 +726,87 @@ Content-Type: application/json
           Making a project public does not affect authentication on the write endpoints.
           If <Code>require_auth</Code> is enabled, callers still need credentials to add or
           remove choices even when the project is public.
+        </Note>
+
+        {/* ── Collections ── */}
+        <Heading2 id="collections">Collections</Heading2>
+        <P>
+          A <strong>Collection</strong> groups one or more projects together under a single
+          named set. Collections are useful when a survey draws from several related reference
+          lists that live in different projects — for example, a set of administrative-boundary
+          lookup tables (provinces, districts, villages) that multiple teams share.
+        </P>
+        <P>
+          Collections can be kept private, shared with specific users, or made fully public so
+          anyone can browse them without logging in.
+        </P>
+
+        <Heading3 id="collections-create">Creating a collection</Heading3>
+        <P>
+          Navigate to <strong>Collections</strong> in the header (requires login). Click{' '}
+          <strong>+ New Collection</strong>, enter a name, a globally-unique slug, and an
+          optional description, then click <strong>Create</strong>.
+        </P>
+        <Ul>
+          <Li>Collection slugs must be unique across <em>all</em> users (unlike project slugs, which are only unique per user).</Li>
+          <Li>Once created, click the collection name to open its detail page where you can manage projects, sharing, and visibility.</Li>
+        </Ul>
+
+        <Heading3 id="collections-projects">Adding &amp; removing projects</Heading3>
+        <P>
+          On the collection detail page, use the <strong>Add project</strong> dropdown to pick
+          any project you own or have access to. Click <strong>Add</strong> to include it.
+        </P>
+        <P>
+          To remove a project from the collection, click the <strong>Remove</strong> button next
+          to it in the project list. Removing a project from a collection does not delete the
+          project or any of its data.
+        </P>
+        <Note>
+          Projects in a collection cannot be deleted from the database while they are still
+          listed in that collection. Remove them from the collection first if you need to delete
+          the project.
+        </Note>
+        <P>
+          In the <strong>My Projects</strong> view, each project header shows purple{' '}
+          <strong>📁 collection</strong> chips for every collection it belongs to. Click a chip
+          to jump straight to that collection.
+        </P>
+
+        <Heading3 id="collections-sharing">Sharing collections</Heading3>
+        <P>
+          The collection owner can share a collection with other registered users. Open the
+          collection detail page, scroll to the <strong>Sharing</strong> panel, type a username,
+          and click <strong>Share</strong>.
+        </P>
+        <P>
+          Shared users can see the collection and all its projects (subject to individual
+          project access rules), but cannot change the collection&rsquo;s settings, add or remove
+          projects, or delete the collection.
+        </P>
+        <P>
+          To revoke access, click <strong>Remove</strong> next to the user&rsquo;s name in the
+          Sharing panel. Only the owner can share or unshare.
+        </P>
+        <Note>
+          Collection sharing is separate from project sharing. Sharing a collection does not
+          automatically grant write access to the projects inside it.
+        </Note>
+
+        <Heading3 id="collections-public">Public collections</Heading3>
+        <P>
+          Toggle <strong>Make this collection public</strong> in the collection settings to
+          publish it. Public collections appear in the <strong>Public Collections</strong> browser
+          (accessible without login) and display all their projects with their active choice
+          lists and a <strong>Copy CSV URL</strong> button for each list.
+        </P>
+        <P>
+          Use the search bar on the Public Collections page to filter by name or description.
+        </P>
+        <Note>
+          Making a collection public exposes the names and slugs of its member projects and
+          their choice lists to unauthenticated users. Ensure the data in those lists is
+          suitable for public visibility before enabling this option.
         </Note>
 
         {/* ── Account ── */}

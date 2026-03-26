@@ -115,3 +115,47 @@ class ProjectShare(models.Model):
 
     def __str__(self):
         return f"{self.user.username} → {self.project}"
+
+
+class Collection(models.Model):
+    """A named grouping of Projects for easier discovery"""
+    name = models.CharField(max_length=255)
+    slug = models.SlugField(unique=True)
+    description = models.TextField(blank=True)
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='collections')
+    is_public = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.name} ({self.slug})"
+
+
+class CollectionProject(models.Model):
+    """M2M join between Collection and Project with ordering"""
+    collection = models.ForeignKey(Collection, on_delete=models.CASCADE, related_name='collection_projects')
+    project = models.ForeignKey(Project, on_delete=models.PROTECT, related_name='collection_memberships')
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        unique_together = ('collection', 'project')
+        ordering = ['order']
+
+    def __str__(self):
+        return f"{self.collection} → {self.project}"
+
+
+class CollectionShare(models.Model):
+    """Grants a user access to manage a collection they don't own"""
+    collection = models.ForeignKey(Collection, on_delete=models.CASCADE, related_name='shares')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='shared_collections')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('collection', 'user')
+
+    def __str__(self):
+        return f"{self.user.username} → {self.collection}"

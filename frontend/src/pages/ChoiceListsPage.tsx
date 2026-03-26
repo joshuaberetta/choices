@@ -1,26 +1,36 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useChoiceLists, useProjects } from '../hooks/useChoiceLists'
-import apiClient, { type Project, type PublicProject, type ProjectShare } from '../services/api'
+import apiClient, {
+  type Project,
+  type PublicProject,
+  type ProjectShare,
+  type Collection,
+  type PublicCollection,
+} from '../services/api'
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Public Projects Tab
-// ──────────────────────────────────────────────────────────────────────────────
+// ── Combined Public Tab ───────────────────────────────────────────────────────
 
-function PublicProjectsTab() {
+function CombinedPublicTab() {
   const [search, setSearch] = useState('')
   const [projects, setProjects] = useState<PublicProject[]>([])
+  const [collections, setCollections] = useState<PublicCollection[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const doSearch = useCallback(async (q: string) => {
     setLoading(true); setError(null)
     try {
-      const res = await apiClient.getPublicProjects(q || undefined)
-      const data = res.data as unknown as { results: PublicProject[] } | PublicProject[]
-      setProjects(Array.isArray(data) ? data : (data as { results: PublicProject[] }).results)
+      const [projRes, collRes] = await Promise.all([
+        apiClient.getPublicProjects(q || undefined),
+        apiClient.getPublicCollections(q || undefined),
+      ])
+      const pd = projRes.data as unknown as { results: PublicProject[] } | PublicProject[]
+      const cd = collRes.data as unknown as { results: PublicCollection[] } | PublicCollection[]
+      setProjects(Array.isArray(pd) ? pd : (pd as { results: PublicProject[] }).results)
+      setCollections(Array.isArray(cd) ? cd : (cd as { results: PublicCollection[] }).results)
     } catch {
-      setError('Failed to load public projects.')
+      setError('Failed to load public content.')
     } finally {
       setLoading(false)
     }
@@ -32,48 +42,107 @@ function PublicProjectsTab() {
 
   return (
     <div>
-      <form onSubmit={handleSearch} className="flex gap-2 mb-5">
+      <form onSubmit={handleSearch} className="flex gap-2 mb-6">
         <input
           type="text"
-          placeholder="Search by project name or owner…"
+          placeholder="Search by name, owner, or description…"
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
-        <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">Search</button>
+        <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
+          Search
+        </button>
       </form>
+
       {loading ? (
         <div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>
       ) : error ? (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm">{error}</div>
-      ) : projects.length === 0 ? (
-        <div className="text-center py-12 text-gray-400">No public projects found.</div>
+      ) : collections.length === 0 && projects.length === 0 ? (
+        <div className="text-center py-12 text-gray-400">No public content found.</div>
       ) : (
-        <div className="space-y-3">
-          {projects.map(p => (
-            <Link key={p.id} to={`/public/projects/${p.id}`} className="block bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <span className="font-semibold text-gray-900">{p.name}</span>
-                  <span className="ml-2 text-xs text-gray-400">by {p.owner_username}</span>
-                  {p.description && <p className="text-sm text-gray-500 mt-1 line-clamp-2">{p.description}</p>}
-                </div>
-                <div className="text-right shrink-0">
-                  <span className="text-xs text-gray-400">{p.list_count} list{p.list_count !== 1 ? 's' : ''}</span>
-                  <p className="text-xs text-gray-400 mt-0.5">Updated {new Date(p.updated_at).toLocaleDateString()}</p>
-                </div>
+        <div className="space-y-6">
+          {collections.length > 0 && (
+            <section>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+                📁 Collections
+              </p>
+              <div className="space-y-2">
+                {collections.map(c => (
+                  <Link
+                    key={c.id}
+                    to={`/collections/public/${c.id}`}
+                    className="flex overflow-hidden bg-white rounded-xl border border-purple-100 shadow-sm hover:shadow-md hover:border-purple-200 transition-all"
+                  >
+                    <div className="w-1 shrink-0 bg-purple-400" />
+                    <div className="flex items-start gap-3 flex-1 p-4">
+                      <span className="text-lg shrink-0 mt-0.5 leading-none">📁</span>
+                      <div className="flex-1 min-w-0">
+                        <span className="font-semibold text-gray-900">{c.name}</span>
+                        <span className="ml-2 text-xs text-gray-400">by {c.owner_username}</span>
+                        {c.description && (
+                          <p className="text-sm text-gray-500 mt-0.5 line-clamp-1">{c.description}</p>
+                        )}
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="text-xs text-gray-400">
+                          {c.project_count} project{c.project_count !== 1 ? 's' : ''}
+                        </span>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {new Date(c.updated_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
               </div>
-            </Link>
-          ))}
+            </section>
+          )}
+
+          {projects.length > 0 && (
+            <section>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+                📄 Projects
+              </p>
+              <div className="space-y-2">
+                {projects.map(p => (
+                  <Link
+                    key={p.id}
+                    to={`/public/projects/${p.id}`}
+                    className="flex overflow-hidden bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all"
+                  >
+                    <div className="w-1 shrink-0 bg-gray-200" />
+                    <div className="flex items-start gap-3 flex-1 p-4">
+                      <span className="text-lg shrink-0 mt-0.5 leading-none">📄</span>
+                      <div className="flex-1 min-w-0">
+                        <span className="font-semibold text-gray-900">{p.name}</span>
+                        <span className="ml-2 text-xs text-gray-400">by {p.owner_username}</span>
+                        {p.description && (
+                          <p className="text-sm text-gray-500 mt-0.5 line-clamp-1">{p.description}</p>
+                        )}
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="text-xs text-gray-400">
+                          {p.list_count} list{p.list_count !== 1 ? 's' : ''}
+                        </span>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {new Date(p.updated_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       )}
     </div>
   )
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Project Settings Panel (owner only)
-// ──────────────────────────────────────────────────────────────────────────────
+// ── Project Settings Panel (owner only) ──────────────────────────────────────
 
 function ProjectSettingsPanel({
   project, onClose, onProjectUpdated,
@@ -135,7 +204,6 @@ function ProjectSettingsPanel({
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Project Settings</p>
         <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xs">✕ Close</button>
       </div>
-      {/* is_public toggle */}
       <div className="mb-5">
         <div className="flex items-center gap-3">
           <button type="button" onClick={handleTogglePublic} disabled={togglingPublic}
@@ -146,7 +214,6 @@ function ProjectSettingsPanel({
         </div>
         <p className="mt-1 text-xs text-gray-400 ml-12">Public projects are discoverable by anyone. CSV links are always public regardless of this setting.</p>
       </div>
-      {/* Share management */}
       <div>
         <p className="text-xs font-semibold text-gray-600 mb-2">Sharing</p>
         {sharesLoading ? (
@@ -189,19 +256,16 @@ function ProjectSettingsPanel({
   )
 }
 
-
+// ── Main component ────────────────────────────────────────────────────────────
 
 export default function ChoiceListsPage() {
   const { choiceLists, loading, error, refetch } = useChoiceLists()
   const { projects, refetch: refetchProjects } = useProjects()
 
-  // Tab state
   const [activeTab, setActiveTab] = useState<'my' | 'public'>('my')
-
-  // Track which project has settings panel open
   const [settingsProjectSlug, setSettingsProjectSlug] = useState<string | null>(null)
 
-  // Group choice lists by project, merging in all known projects (even empty ones)
+  // Group choice lists by project
   const grouped = useMemo(() => {
     const map = new Map<number, {
       id: number
@@ -211,6 +275,7 @@ export default function ChoiceListsPage() {
       is_public: boolean
       role: 'owner' | 'shared'
       owner_username: string | null
+      collection_memberships: { id: number; name: string; slug: string }[]
       lists: typeof choiceLists
     }>()
     for (const p of projects) {
@@ -222,6 +287,7 @@ export default function ChoiceListsPage() {
         is_public: p.is_public,
         role: p.role ?? 'owner',
         owner_username: p.owner_username ?? null,
+        collection_memberships: p.collection_memberships ?? [],
         lists: [],
       })
     }
@@ -235,6 +301,7 @@ export default function ChoiceListsPage() {
           is_public: false,
           role: 'owner',
           owner_username: null,
+          collection_memberships: [],
           lists: [],
         })
       }
@@ -243,42 +310,126 @@ export default function ChoiceListsPage() {
     return Array.from(map.values()).sort((a, b) => a.project_name.localeCompare(b.project_name))
   }, [choiceLists, projects])
 
-  // All projects expanded by default
+  // Project accordion collapse state (all expanded by default)
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
-  const toggleProject = (projectId: number) =>
-    setCollapsed(prev => {
-      const next = new Set(prev)
-      next.has(projectId) ? next.delete(projectId) : next.add(projectId)
-      return next
-    })
+  const toggleProject = (id: number) =>
+    setCollapsed(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
 
-  // Inline list editing
+  // ── Collections state ────────────────────────────────────────────────────
+
+  const [collections, setCollections] = useState<Collection[]>([])
+  const [collapsedCollections, setCollapsedCollections] = useState<Set<number>>(new Set())
+  const [confirmDeleteCollectionId, setConfirmDeleteCollectionId] = useState<number | null>(null)
+  const [deletingCollectionId, setDeletingCollectionId] = useState<number | null>(null)
+  const [moveMenuProjectId, setMoveMenuProjectId] = useState<number | null>(null)
+  const [movingProject, setMovingProject] = useState(false)
+  const [showCollectionForm, setShowCollectionForm] = useState(false)
+  const [collectionForm, setCollectionForm] = useState({ name: '', slug: '', description: '' })
+  const [collectionSubmitting, setCollectionSubmitting] = useState(false)
+  const [collectionFormError, setCollectionFormError] = useState<string | null>(null)
+
+  const fetchCollections = useCallback(async () => {
+    try {
+      const res = await apiClient.getCollections()
+      const data = res.data as unknown as { results?: Collection[] } | Collection[]
+      setCollections(Array.isArray(data) ? data : (data as { results: Collection[] }).results ?? [])
+    } catch { /* ignore */ }
+  }, [])
+
+  useEffect(() => { fetchCollections() }, [fetchCollections])
+
+  // Derived: which projects belong to at least one collection
+  const collectedProjectIds = useMemo(() => {
+    const ids = new Set<number>()
+    for (const c of collections) for (const p of (c.projects ?? [])) ids.add(p.id)
+    return ids
+  }, [collections])
+
+  const uncollectedProjects = useMemo(
+    () => grouped.filter(g => !collectedProjectIds.has(g.id)),
+    [grouped, collectedProjectIds]
+  )
+
+  // Collections with their full grouped project objects
+  const collectionsWithGroupedProjects = useMemo(() =>
+    collections.map(c => ({
+      collection: c,
+      projects: (c.projects ?? [])
+        .map(cp => grouped.find(g => g.id === cp.id))
+        .filter((g): g is NonNullable<typeof g> => g !== undefined),
+    })),
+    [collections, grouped]
+  )
+
+  const toggleCollection = (id: number) =>
+    setCollapsedCollections(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
+
+  const handleCreateCollection = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setCollectionSubmitting(true); setCollectionFormError(null)
+    try {
+      await apiClient.createCollection({
+        name: collectionForm.name,
+        slug: collectionForm.slug || collectionForm.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''),
+        description: collectionForm.description,
+      })
+      setShowCollectionForm(false)
+      setCollectionForm({ name: '', slug: '', description: '' })
+      fetchCollections()
+    } catch {
+      setCollectionFormError('Failed to create. The slug must be globally unique and URL-safe.')
+    } finally {
+      setCollectionSubmitting(false)
+    }
+  }
+
+  const handleDeleteCollection = async (id: number) => {
+    setDeletingCollectionId(id)
+    try {
+      await apiClient.deleteCollection(id)
+      setConfirmDeleteCollectionId(null)
+      fetchCollections()
+      refetchProjects()
+    } catch { /* ignore */ } finally {
+      setDeletingCollectionId(null)
+    }
+  }
+
+  const handleMoveProject = async (projectId: number, collectionId: number, add: boolean) => {
+    setMovingProject(true)
+    try {
+      if (add) await apiClient.addProjectToCollection(collectionId, projectId)
+      else await apiClient.removeProjectFromCollection(collectionId, projectId)
+      setMoveMenuProjectId(null)
+      await Promise.all([fetchCollections(), refetchProjects()])
+    } catch { /* ignore */ } finally {
+      setMovingProject(false)
+    }
+  }
+
+  // ── List inline editing ──────────────────────────────────────────────────
+
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editForm, setEditForm] = useState({ name: '', slug: '' })
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
 
   const startEdit = (list: { id: number; name: string; slug: string }) => {
-    setEditingId(list.id)
-    setEditForm({ name: list.name, slug: list.slug })
-    setEditError(null)
+    setEditingId(list.id); setEditForm({ name: list.name, slug: list.slug }); setEditError(null)
   }
   const cancelEdit = () => { setEditingId(null); setEditError(null) }
   const saveEdit = async (id: number) => {
-    setEditSaving(true)
-    setEditError(null)
+    setEditSaving(true); setEditError(null)
     try {
       await apiClient.updateChoiceList(id, { name: editForm.name, slug: editForm.slug })
-      setEditingId(null)
-      refetch()
+      setEditingId(null); refetch()
     } catch {
       setEditError('Failed to save. Check that the slug is unique and valid.')
-    } finally {
-      setEditSaving(false)
-    }
+    } finally { setEditSaving(false) }
   }
 
-  // New project form
+  // ── New project form ─────────────────────────────────────────────────────
+
   const [showProjectForm, setShowProjectForm] = useState(false)
   const [projectForm, setProjectForm] = useState({ name: '', slug: '', description: '' })
   const [projectSubmitting, setProjectSubmitting] = useState(false)
@@ -286,8 +437,7 @@ export default function ChoiceListsPage() {
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault()
-    setProjectSubmitting(true)
-    setProjectFormError(null)
+    setProjectSubmitting(true); setProjectFormError(null)
     try {
       await apiClient.createProject({
         name: projectForm.name,
@@ -299,12 +449,11 @@ export default function ChoiceListsPage() {
       refetchProjects()
     } catch {
       setProjectFormError('Failed to create project. Check that the slug is unique and valid.')
-    } finally {
-      setProjectSubmitting(false)
-    }
+    } finally { setProjectSubmitting(false) }
   }
 
-  // Inline project editing
+  // ── Inline project editing ───────────────────────────────────────────────
+
   const [editingProjectId, setEditingProjectId] = useState<number | null>(null)
   const [editProjectForm, setEditProjectForm] = useState({ name: '', description: '' })
   const [editProjectSaving, setEditProjectSaving] = useState(false)
@@ -317,20 +466,17 @@ export default function ChoiceListsPage() {
   }
   const cancelEditProject = () => { setEditingProjectId(null); setEditProjectError(null) }
   const saveEditProject = async (id: number) => {
-    setEditProjectSaving(true)
-    setEditProjectError(null)
+    setEditProjectSaving(true); setEditProjectError(null)
     try {
       await apiClient.updateProject(id, { name: editProjectForm.name, description: editProjectForm.description })
-      setEditingProjectId(null)
-      refetchProjects()
+      setEditingProjectId(null); refetchProjects()
     } catch {
       setEditProjectError('Failed to save. Please try again.')
-    } finally {
-      setEditProjectSaving(false)
-    }
+    } finally { setEditProjectSaving(false) }
   }
 
-  // Delete project
+  // ── Delete project ───────────────────────────────────────────────────────
+
   const [confirmDeleteProjectId, setConfirmDeleteProjectId] = useState<number | null>(null)
   const [deletingProjectId, setDeletingProjectId] = useState<number | null>(null)
   const handleDeleteProject = async (id: number, slug: string) => {
@@ -338,48 +484,37 @@ export default function ChoiceListsPage() {
     try {
       await apiClient.deleteProject(slug)
       setConfirmDeleteProjectId(null)
-      refetchProjects()
-      refetch()
-    } catch {
-      // keep confirm state open so user can retry or cancel
-    } finally {
-      setDeletingProjectId(null)
-    }
+      refetchProjects(); refetch()
+    } catch { /* keep confirm open */ } finally { setDeletingProjectId(null) }
   }
 
-  // Delete choice list
+  // ── Delete choice list ───────────────────────────────────────────────────
+
   const [confirmDeleteListId, setConfirmDeleteListId] = useState<number | null>(null)
   const [deletingListId, setDeletingListId] = useState<number | null>(null)
   const handleDeleteList = async (id: number) => {
     setDeletingListId(id)
     try {
       await apiClient.deleteChoiceList(id)
-      setConfirmDeleteListId(null)
-      refetch()
-    } catch {
-      // keep confirm state open so user can retry or cancel
-    } finally {
-      setDeletingListId(null)
-    }
+      setConfirmDeleteListId(null); refetch()
+    } catch { /* keep confirm open */ } finally { setDeletingListId(null) }
   }
 
-  // Per-project new list form
+  // ── Per-project new list form ────────────────────────────────────────────
+
   const [newListForProject, setNewListForProject] = useState<number | null>(null)
   const [listForm, setListForm] = useState({ name: '', slug: '', description: '' })
   const [listSubmitting, setListSubmitting] = useState(false)
   const [listFormError, setListFormError] = useState<string | null>(null)
 
   const openNewList = (projectId: number) => {
-    setNewListForProject(projectId)
-    setListForm({ name: '', slug: '', description: '' })
-    setListFormError(null)
+    setNewListForProject(projectId); setListForm({ name: '', slug: '', description: '' }); setListFormError(null)
   }
   const closeNewList = () => { setNewListForProject(null); setListFormError(null) }
 
   const handleCreateList = async (e: React.FormEvent, projectId: number) => {
     e.preventDefault()
-    setListSubmitting(true)
-    setListFormError(null)
+    setListSubmitting(true); setListFormError(null)
     try {
       await apiClient.createChoiceList({
         project: projectId,
@@ -387,26 +522,360 @@ export default function ChoiceListsPage() {
         slug: listForm.slug || listForm.name.toLowerCase().replace(/\s+/g, '-'),
         description: listForm.description,
       })
-      closeNewList()
-      refetch()
+      closeNewList(); refetch()
     } catch {
       setListFormError('Failed to create choice list. Check that the slug is unique and valid.')
-    } finally {
-      setListSubmitting(false)
-    }
+    } finally { setListSubmitting(false) }
   }
+
+  // ── Project group renderer ───────────────────────────────────────────────
+
+  function renderProjectGroup(group: typeof grouped[0]) {
+    const isOpen = !collapsed.has(group.id)
+    const isAddingList = newListForProject === group.id
+    const isEditingProject = editingProjectId === group.id
+    const isOwner = group.role === 'owner'
+    const isSettingsOpen = settingsProjectSlug === group.project_slug
+    const projectObj: Project = {
+      id: group.id,
+      name: group.project_name,
+      slug: group.project_slug,
+      description: group.description,
+      owner: null,
+      owner_username: group.owner_username,
+      is_public: group.is_public,
+      role: group.role,
+      created_at: '',
+      updated_at: '',
+    }
+
+    return (
+      <div key={group.project_slug} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden group/project">
+        <div className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 transition-colors">
+          <button onClick={() => toggleProject(group.id)} className="flex items-center gap-3 flex-1 text-left flex-wrap">
+            <span className="font-semibold text-gray-900">{group.project_name}</span>
+            <span className="text-xs font-mono bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded">
+              {group.project_slug}
+            </span>
+            {!isOwner && group.owner_username && (
+              <span className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded">
+                Shared by {group.owner_username}
+              </span>
+            )}
+            {group.is_public && (
+              <span className="text-xs bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded">Public</span>
+            )}
+            <span className="text-xs text-gray-400">{group.lists.length} list{group.lists.length !== 1 ? 's' : ''}</span>
+          </button>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Move to collection button + dropdown */}
+            <div className="relative">
+              <button
+                onClick={e => { e.stopPropagation(); setMoveMenuProjectId(m => m === group.id ? null : group.id) }}
+                className={`px-3 py-1.5 border rounded-lg text-xs font-medium transition-colors opacity-0 group-hover/project:opacity-100 ${
+                  group.collection_memberships.length > 0
+                    ? 'border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100'
+                    : 'border-gray-200 text-gray-500 hover:bg-gray-100'
+                }`}
+              >
+                📁 {group.collection_memberships.length > 0 ? `(${group.collection_memberships.length})` : 'Move'}
+              </button>
+
+              {moveMenuProjectId === group.id && (
+                <div className="absolute right-0 top-full mt-1 z-20 min-w-[220px] bg-white rounded-lg border border-gray-200 shadow-lg py-1.5">
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-3 pt-1 pb-1.5 border-b border-gray-100">
+                    Collection membership
+                  </p>
+                  {collections.length === 0 ? (
+                    <p className="px-3 py-2.5 text-xs text-gray-400">No collections yet. Create one first.</p>
+                  ) : (
+                    collections.map(c => {
+                      const inThis = c.projects?.some(p => p.id === group.id) ?? false
+                      return (
+                        <button
+                          key={c.id}
+                          onClick={() => handleMoveProject(group.id, c.id, !inThis)}
+                          disabled={movingProject}
+                          className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-xs hover:bg-gray-50 transition-colors disabled:opacity-50"
+                        >
+                          <span className={`flex-shrink-0 w-3.5 h-3.5 rounded border flex items-center justify-center text-[9px] font-bold ${
+                            inThis ? 'bg-purple-600 border-purple-600 text-white' : 'border-gray-300 text-transparent'
+                          }`}>✓</span>
+                          <span className="truncate flex-1">{c.name}</span>
+                          {c.role === 'shared' && (
+                            <span className="text-[10px] text-gray-400 shrink-0">shared</span>
+                          )}
+                        </button>
+                      )
+                    })
+                  )}
+                </div>
+              )}
+            </div>
+
+            {isOwner && confirmDeleteProjectId === group.id ? (
+              <>
+                <span className="text-xs text-gray-500">
+                  Delete project{group.lists.length > 0 ? ` and ${group.lists.length} list${group.lists.length !== 1 ? 's' : ''}` : ''}?
+                </span>
+                <button
+                  onClick={() => handleDeleteProject(group.id, group.project_slug)}
+                  disabled={deletingProjectId === group.id}
+                  className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
+                >
+                  {deletingProjectId === group.id ? 'Deleting…' : 'Yes, delete'}
+                </button>
+                <button
+                  onClick={() => setConfirmDeleteProjectId(null)}
+                  className="px-3 py-1.5 border border-gray-200 text-gray-500 rounded-lg text-xs font-medium hover:bg-gray-100 transition-colors"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => isEditingProject ? cancelEditProject() : startEditProject(group)}
+                  className="px-3 py-1.5 border border-gray-200 text-gray-500 rounded-lg text-xs font-medium hover:bg-gray-100 transition-colors opacity-0 group-hover/project:opacity-100"
+                >
+                  {isEditingProject ? 'Cancel edit' : 'Edit'}
+                </button>
+                {isOwner && (
+                  <>
+                    <button
+                      onClick={() => setSettingsProjectSlug(s => s === group.project_slug ? null : group.project_slug)}
+                      className={`px-3 py-1.5 border rounded-lg text-xs font-medium transition-colors opacity-0 group-hover/project:opacity-100 ${isSettingsOpen ? 'border-indigo-300 text-indigo-600 bg-indigo-50' : 'border-gray-200 text-gray-500 hover:bg-gray-100'}`}
+                    >
+                      {isSettingsOpen ? 'Close settings' : 'Settings'}
+                    </button>
+                    <button
+                      onClick={() => { cancelEditProject(); setConfirmDeleteProjectId(group.id) }}
+                      className="px-3 py-1.5 border border-red-200 text-red-500 rounded-lg text-xs font-medium hover:bg-red-50 transition-colors opacity-0 group-hover/project:opacity-100"
+                    >
+                      Delete
+                    </button>
+                  </>
+                )}
+                <button
+                  onClick={() => isAddingList ? closeNewList() : openNewList(group.id)}
+                  className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors"
+                >
+                  {isAddingList ? 'Cancel' : '+ New List'}
+                </button>
+              </>
+            )}
+
+            <svg
+              onClick={() => toggleProject(group.id)}
+              className={`w-4 h-4 text-gray-400 transition-transform duration-200 cursor-pointer ${isOpen ? 'rotate-180' : ''}`}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+        </div>
+
+        {/* Inline project edit form */}
+        {isEditingProject && (
+          <div className="border-t border-gray-100 px-5 py-4 bg-gray-50/60">
+            {editProjectError && <p className="text-red-600 text-xs mb-3 bg-red-50 px-3 py-2 rounded">{editProjectError}</p>}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Name</label>
+                <input
+                  autoFocus required type="text"
+                  value={editProjectForm.name}
+                  onChange={e => setEditProjectForm(f => ({ ...f, name: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
+                <input
+                  type="text" placeholder="Optional"
+                  value={editProjectForm.description}
+                  onChange={e => setEditProjectForm(f => ({ ...f, description: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+            <div className="mt-3 flex justify-end">
+              <button
+                onClick={() => saveEditProject(group.id)}
+                disabled={editProjectSaving}
+                className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+              >
+                {editProjectSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Owner settings panel */}
+        {isOwner && isSettingsOpen && (
+          <ProjectSettingsPanel
+            project={projectObj}
+            onClose={() => setSettingsProjectSlug(null)}
+            onProjectUpdated={refetchProjects}
+          />
+        )}
+
+        {/* Accordion body */}
+        {isOpen && (
+          <div className="border-t border-gray-100">
+            {isAddingList && (
+              <form
+                onSubmit={e => handleCreateList(e, group.id)}
+                className="px-5 py-4 bg-indigo-50/40 border-b border-indigo-100"
+              >
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">New list in {group.project_name}</h3>
+                {listFormError && <p className="text-red-600 text-xs mb-3 bg-red-50 px-3 py-2 rounded">{listFormError}</p>}
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Name</label>
+                    <input required autoFocus type="text" placeholder="e.g. Fruits"
+                      value={listForm.name} onChange={e => setListForm(f => ({ ...f, name: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">ID <span className="text-gray-400 font-normal">(auto)</span></label>
+                    <input type="text" placeholder="e.g. fruits"
+                      value={listForm.slug} onChange={e => setListForm(f => ({ ...f, slug: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
+                    <input type="text" placeholder="Optional"
+                      value={listForm.description} onChange={e => setListForm(f => ({ ...f, description: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  </div>
+                </div>
+                <div className="mt-3 flex justify-end">
+                  <button type="submit" disabled={listSubmitting}
+                    className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors">
+                    {listSubmitting ? 'Creating…' : 'Create List'}
+                  </button>
+                </div>
+              </form>
+            )}
+            {group.lists.length === 0 && !isAddingList ? (
+              <div className="px-5 py-6 text-center text-gray-400 text-sm">
+                No lists yet — click <span className="font-medium text-indigo-600">+ New List</span> to add one.
+              </div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    <th className="px-5 py-2.5 text-left font-semibold text-gray-500 text-xs uppercase tracking-wide">Name</th>
+                    <th className="px-5 py-2.5 text-left font-semibold text-gray-500 text-xs uppercase tracking-wide">ID</th>
+                    <th className="px-5 py-2.5 text-left font-semibold text-gray-500 text-xs uppercase tracking-wide">Choices</th>
+                    <th className="px-5 py-2.5 text-right font-semibold text-gray-500 text-xs uppercase tracking-wide"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {group.lists.map(list => (
+                    editingId === list.id ? (
+                      <tr key={list.id} className="border-b border-gray-50 last:border-b-0 bg-indigo-50/40">
+                        <td className="px-4 py-2">
+                          <input autoFocus type="text" value={editForm.name}
+                            onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+                            className="w-full border border-indigo-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                          {editError && <p className="text-red-600 text-xs mt-1">{editError}</p>}
+                        </td>
+                        <td className="px-4 py-2">
+                          <input type="text" value={editForm.slug}
+                            onChange={e => setEditForm(f => ({ ...f, slug: e.target.value }))}
+                            className="w-full border border-indigo-300 rounded-md px-2 py-1 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                        </td>
+                        <td className="px-4 py-2"></td>
+                        <td className="px-4 py-2 text-right whitespace-nowrap">
+                          <button onClick={() => saveEdit(list.id)} disabled={editSaving}
+                            className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors mr-2">
+                            {editSaving ? 'Saving…' : 'Save'}
+                          </button>
+                          <button onClick={cancelEdit}
+                            className="px-3 py-1.5 bg-white border border-gray-300 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-50 transition-colors">
+                            Cancel
+                          </button>
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr key={list.id} className="border-b border-gray-50 last:border-b-0 hover:bg-gray-50 transition-colors group/row">
+                        <td className="px-5 py-3 font-medium text-gray-900">{list.name}</td>
+                        <td className="px-5 py-3 font-mono text-gray-500 text-xs">{list.slug}</td>
+                        <td className="px-5 py-3 text-gray-400 text-xs">{list.choices_count}</td>
+                        <td className="px-5 py-3 text-right whitespace-nowrap">
+                          {confirmDeleteListId === list.id ? (
+                            <>
+                              <span className="text-xs text-gray-500 mr-2">Delete list?</span>
+                              <button onClick={() => handleDeleteList(list.id)} disabled={deletingListId === list.id}
+                                className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium hover:bg-red-700 disabled:opacity-50 transition-colors mr-2">
+                                {deletingListId === list.id ? 'Deleting…' : 'Yes, delete'}
+                              </button>
+                              <button onClick={() => setConfirmDeleteListId(null)}
+                                className="px-3 py-1.5 border border-gray-200 text-gray-500 rounded-lg text-xs font-medium hover:bg-gray-50 transition-colors">
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button onClick={() => startEdit(list)}
+                                className="px-3 py-1.5 border border-gray-200 text-gray-500 rounded-lg text-xs font-medium hover:bg-gray-100 transition-colors mr-2 opacity-0 group-hover/row:opacity-100">
+                                Edit
+                              </button>
+                              <button onClick={() => { cancelEdit(); setConfirmDeleteListId(list.id) }}
+                                className="px-3 py-1.5 border border-red-200 text-red-500 rounded-lg text-xs font-medium hover:bg-red-50 transition-colors mr-2 opacity-0 group-hover/row:opacity-100">
+                                Delete
+                              </button>
+                              <Link to={`/${list.project_slug}/${list.slug}`}
+                                className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors">
+                                View →
+                              </Link>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── Render ───────────────────────────────────────────────────────────────
+
+  const isEmpty = grouped.length === 0 && collections.length === 0
 
   return (
     <div>
+      {/* Overlay to close move-to-collection dropdown on outside click */}
+      {moveMenuProjectId !== null && (
+        <div className="fixed inset-0 z-10" onClick={() => setMoveMenuProjectId(null)} />
+      )}
+
+      {/* Page header */}
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-gray-900">Projects</h1>
         {activeTab === 'my' && (
-          <button
-            onClick={() => { setShowProjectForm(v => !v); setProjectFormError(null) }}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
-          >
-            {showProjectForm ? 'Cancel' : '+ New Project'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setShowCollectionForm(v => !v); setCollectionFormError(null) }}
+              className="px-4 py-2 border border-purple-300 text-purple-700 bg-purple-50 rounded-lg text-sm font-medium hover:bg-purple-100 transition-colors"
+            >
+              {showCollectionForm ? 'Cancel' : '📁 New Collection'}
+            </button>
+            <button
+              onClick={() => { setShowProjectForm(v => !v); setProjectFormError(null) }}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
+            >
+              {showProjectForm ? 'Cancel' : '+ New Project'}
+            </button>
+          </div>
         )}
       </div>
 
@@ -418,394 +887,212 @@ export default function ChoiceListsPage() {
             onClick={() => setActiveTab(tab)}
             className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${activeTab === tab ? 'text-indigo-700 border-b-2 border-indigo-600 -mb-px bg-white' : 'text-gray-500 hover:text-gray-700'}`}
           >
-            {tab === 'my' ? 'My Projects' : 'Public Projects'}
+            {tab === 'my' ? 'My Projects' : 'Public'}
           </button>
         ))}
       </div>
 
-      {activeTab === 'public' && <PublicProjectsTab />}
+      {activeTab === 'public' && <CombinedPublicTab />}
 
       {activeTab === 'my' && (
         <>
-      {showProjectForm && (
-        <form onSubmit={handleCreateProject} className="mb-6 bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-          <h2 className="font-semibold text-gray-800 mb-4">Create Project</h2>
-          {projectFormError && <p className="text-red-600 text-sm mb-3 bg-red-50 px-3 py-2 rounded">{projectFormError}</p>}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-              <input
-                required
-                autoFocus
-                type="text"
-                placeholder="e.g. My Project"
-                value={projectForm.name}
-                onChange={e => setProjectForm(f => ({ ...f, name: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                ID <span className="text-gray-400 font-normal">(auto-generated if empty)</span>
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. my-project"
-                value={projectForm.slug}
-                onChange={e => setProjectForm(f => ({ ...f, slug: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-            <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-              <input
-                type="text"
-                placeholder="Optional"
-                value={projectForm.description}
-                onChange={e => setProjectForm(f => ({ ...f, description: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-          </div>
-          <div className="mt-4 flex justify-end">
-            <button
-              type="submit"
-              disabled={projectSubmitting}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-            >
-              {projectSubmitting ? 'Creating…' : 'Create Project'}
-            </button>
-          </div>
-        </form>
-      )}
+          {/* New collection form */}
+          {showCollectionForm && (
+            <form onSubmit={handleCreateCollection} className="mb-4 bg-purple-50 rounded-xl border border-purple-200 p-5 shadow-sm">
+              <h2 className="font-semibold text-purple-900 mb-4">📁 Create Collection</h2>
+              {collectionFormError && (
+                <p className="text-red-600 text-sm mb-3 bg-red-50 px-3 py-2 rounded">{collectionFormError}</p>
+              )}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                  <input required autoFocus type="text" placeholder="e.g. Admin Boundaries"
+                    value={collectionForm.name}
+                    onChange={e => setCollectionForm(f => ({ ...f, name: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    ID <span className="text-gray-400 font-normal">(globally unique; auto-generated if empty)</span>
+                  </label>
+                  <input type="text" placeholder="e.g. admin-boundaries"
+                    value={collectionForm.slug}
+                    onChange={e => setCollectionForm(f => ({ ...f, slug: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                  <input type="text" placeholder="Optional"
+                    value={collectionForm.description}
+                    onChange={e => setCollectionForm(f => ({ ...f, description: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                </div>
+              </div>
+              <div className="mt-4 flex justify-end">
+                <button type="submit" disabled={collectionSubmitting}
+                  className="px-4 py-2 bg-purple-700 text-white rounded-lg text-sm font-medium hover:bg-purple-800 disabled:opacity-50 transition-colors">
+                  {collectionSubmitting ? 'Creating…' : 'Create Collection'}
+                </button>
+              </div>
+            </form>
+          )}
 
-      {loading ? (
-        <div className="flex items-center justify-center py-16 text-gray-400">Loading…</div>
-      ) : error ? (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm">{error}</div>
-      ) : grouped.length === 0 ? (
-        <div className="text-center py-16 text-gray-400">
-          <p className="text-lg">No projects yet</p>
-          <p className="text-sm mt-1">Create a project using the button above to get started.</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {grouped.map(group => {
-            const isOpen = !collapsed.has(group.id)
-            const isAddingList = newListForProject === group.id
-            const isEditingProject = editingProjectId === group.id
-            const isOwner = group.role === 'owner'
-            const isSettingsOpen = settingsProjectSlug === group.project_slug
-            // Build a Project-shaped object for the settings panel
-            const projectObj: Project = {
-              id: group.id,
-              name: group.project_name,
-              slug: group.project_slug,
-              description: group.description,
-              is_public: group.is_public,
-              role: group.role,
-              owner_username: group.owner_username,
-              updated_at: '',
-            }
-            return (
-              <div key={group.project_slug} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden group/project">
-                {/* Accordion header */}
-                <div className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 transition-colors">
-                  <button
-                    onClick={() => toggleProject(group.id)}
-                    className="flex items-center gap-3 flex-1 text-left"
-                  >
-                    <span className="font-semibold text-gray-900">{group.project_name}</span>
-                    <span className="text-xs font-mono bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded">
-                      {group.project_slug}
-                    </span>
-                    {!isOwner && group.owner_username && (
-                      <span className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded">
-                        Shared by {group.owner_username}
-                      </span>
-                    )}
-                    {group.is_public && (
-                      <span className="text-xs bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded">Public</span>
-                    )}
-                    <span className="text-xs text-gray-400">{group.lists.length} list{group.lists.length !== 1 ? 's' : ''}</span>
-                  </button>
-                  <div className="flex items-center gap-2">
-                    {isOwner && confirmDeleteProjectId === group.id ? (
-                      <>
-                        <span className="text-xs text-gray-500">Delete project{group.lists.length > 0 ? ` and ${group.lists.length} list${group.lists.length !== 1 ? 's' : ''}` : ''}?</span>
-                        <button
-                          onClick={() => handleDeleteProject(group.id, group.project_slug)}
-                          disabled={deletingProjectId === group.id}
-                          className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
-                        >
-                          {deletingProjectId === group.id ? 'Deleting…' : 'Yes, delete'}
-                        </button>
-                        <button
-                          onClick={() => setConfirmDeleteProjectId(null)}
-                          className="px-3 py-1.5 border border-gray-200 text-gray-500 rounded-lg text-xs font-medium hover:bg-gray-100 transition-colors"
-                        >
-                          Cancel
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => isEditingProject ? cancelEditProject() : startEditProject(group)}
-                          className="px-3 py-1.5 border border-gray-200 text-gray-500 rounded-lg text-xs font-medium hover:bg-gray-100 transition-colors opacity-0 group-hover/project:opacity-100"
-                        >
-                          {isEditingProject ? 'Cancel edit' : 'Edit'}
-                        </button>
-                        {isOwner && (
+          {/* New project form */}
+          {showProjectForm && (
+            <form onSubmit={handleCreateProject} className="mb-4 bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+              <h2 className="font-semibold text-gray-800 mb-4">Create Project</h2>
+              {projectFormError && <p className="text-red-600 text-sm mb-3 bg-red-50 px-3 py-2 rounded">{projectFormError}</p>}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                  <input required autoFocus type="text" placeholder="e.g. My Project"
+                    value={projectForm.name}
+                    onChange={e => setProjectForm(f => ({ ...f, name: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    ID <span className="text-gray-400 font-normal">(auto-generated if empty)</span>
+                  </label>
+                  <input type="text" placeholder="e.g. my-project"
+                    value={projectForm.slug}
+                    onChange={e => setProjectForm(f => ({ ...f, slug: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                  <input type="text" placeholder="Optional"
+                    value={projectForm.description}
+                    onChange={e => setProjectForm(f => ({ ...f, description: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+              </div>
+              <div className="mt-4 flex justify-end">
+                <button type="submit" disabled={projectSubmitting}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors">
+                  {projectSubmitting ? 'Creating…' : 'Create Project'}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {loading ? (
+            <div className="flex items-center justify-center py-16 text-gray-400">Loading…</div>
+          ) : error ? (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm">{error}</div>
+          ) : isEmpty ? (
+            <div className="text-center py-16 text-gray-400">
+              <p className="text-lg">No projects yet</p>
+              <p className="text-sm mt-1">Create a project or collection using the buttons above to get started.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {/* ── Collection folders with nested project accordions ── */}
+              {collectionsWithGroupedProjects.map(({ collection, projects: collProjects }) => {
+                const isCollOpen = !collapsedCollections.has(collection.id)
+                return (
+                  <div key={collection.id} className="group/collection rounded-xl overflow-hidden border-2 border-purple-100 bg-white shadow-sm">
+                    {/* Folder header */}
+                    <div className="flex items-center justify-between px-5 py-3.5 bg-purple-50/70 hover:bg-purple-50 transition-colors">
+                      <button
+                        onClick={() => toggleCollection(collection.id)}
+                        className="flex items-center gap-3 flex-1 text-left flex-wrap"
+                      >
+                        <span className="text-base leading-none">{isCollOpen ? '📂' : '📁'}</span>
+                        <span className="font-semibold text-gray-900">{collection.name}</span>
+                        {collection.description && (
+                          <span className="text-xs text-gray-400 truncate max-w-xs hidden sm:block">
+                            {collection.description}
+                          </span>
+                        )}
+                        <span className="text-xs text-gray-400">
+                          {collection.project_count} project{collection.project_count !== 1 ? 's' : ''}
+                        </span>
+                        {collection.is_public && (
+                          <span className="text-xs bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded">Public</span>
+                        )}
+                        {collection.role === 'shared' && (
+                          <span className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded">
+                            Shared by {collection.owner_username}
+                          </span>
+                        )}
+                      </button>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {collection.role === 'owner' && confirmDeleteCollectionId === collection.id ? (
                           <>
+                            <span className="text-xs text-gray-500">Delete collection?</span>
                             <button
-                              onClick={() => setSettingsProjectSlug(s => s === group.project_slug ? null : group.project_slug)}
-                              className={`px-3 py-1.5 border rounded-lg text-xs font-medium transition-colors opacity-0 group-hover/project:opacity-100 ${isSettingsOpen ? 'border-indigo-300 text-indigo-600 bg-indigo-50' : 'border-gray-200 text-gray-500 hover:bg-gray-100'}`}
+                              onClick={() => handleDeleteCollection(collection.id)}
+                              disabled={deletingCollectionId === collection.id}
+                              className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
                             >
-                              {isSettingsOpen ? 'Close settings' : 'Settings'}
+                              {deletingCollectionId === collection.id ? 'Deleting…' : 'Yes, delete'}
                             </button>
                             <button
-                              onClick={() => { cancelEditProject(); setConfirmDeleteProjectId(group.id) }}
-                              className="px-3 py-1.5 border border-red-200 text-red-500 rounded-lg text-xs font-medium hover:bg-red-50 transition-colors opacity-0 group-hover/project:opacity-100"
+                              onClick={() => setConfirmDeleteCollectionId(null)}
+                              className="px-3 py-1.5 border border-gray-200 text-gray-500 rounded-lg text-xs font-medium hover:bg-gray-100 transition-colors"
                             >
-                              Delete
+                              Cancel
                             </button>
                           </>
+                        ) : (
+                          <>
+                            <Link
+                              to={`/collections/${collection.id}`}
+                              onClick={e => e.stopPropagation()}
+                              className="px-3 py-1.5 border border-purple-200 text-purple-700 rounded-lg text-xs font-medium hover:bg-purple-100 transition-colors opacity-0 group-hover/collection:opacity-100"
+                            >
+                              Manage →
+                            </Link>
+                            {collection.role === 'owner' && (
+                              <button
+                                onClick={() => setConfirmDeleteCollectionId(collection.id)}
+                                className="px-3 py-1.5 border border-red-200 text-red-500 rounded-lg text-xs font-medium hover:bg-red-50 transition-colors opacity-0 group-hover/collection:opacity-100"
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </>
                         )}
-                        <button
-                          onClick={() => isAddingList ? closeNewList() : openNewList(group.id)}
-                          className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors"
+                        <svg
+                          onClick={() => toggleCollection(collection.id)}
+                          className={`w-4 h-4 text-gray-400 transition-transform duration-200 cursor-pointer ${isCollOpen ? 'rotate-180' : ''}`}
+                          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
                         >
-                          {isAddingList ? 'Cancel' : '+ New List'}
-                        </button>
-                      </>
-                    )}
-                    <svg
-                      onClick={() => toggleProject(group.id)}
-                      className={`w-4 h-4 text-gray-400 transition-transform duration-200 cursor-pointer ${isOpen ? 'rotate-180' : ''}`}
-                      fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
-                </div>
-
-                {/* Inline project edit form */}
-                {isEditingProject && (
-                  <div className="border-t border-gray-100 px-5 py-4 bg-gray-50/60">
-                    {editProjectError && <p className="text-red-600 text-xs mb-3 bg-red-50 px-3 py-2 rounded">{editProjectError}</p>}
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Name</label>
-                        <input
-                          autoFocus
-                          required
-                          type="text"
-                          value={editProjectForm.name}
-                          onChange={e => setEditProjectForm(f => ({ ...f, name: e.target.value }))}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
-                        <input
-                          type="text"
-                          placeholder="Optional"
-                          value={editProjectForm.description}
-                          onChange={e => setEditProjectForm(f => ({ ...f, description: e.target.value }))}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                        </svg>
                       </div>
                     </div>
-                    <div className="mt-3 flex justify-end">
-                      <button
-                        onClick={() => saveEditProject(group.id)}
-                        disabled={editProjectSaving}
-                        className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-                      >
-                        {editProjectSaving ? 'Saving…' : 'Save'}
-                      </button>
-                    </div>
-                  </div>
-                )}
 
-                {/* Owner settings panel */}
-                {isOwner && isSettingsOpen && (
-                  <ProjectSettingsPanel
-                    project={projectObj}
-                    onClose={() => setSettingsProjectSlug(null)}
-                    onProjectUpdated={refetchProjects}
-                  />
-                )}
-
-                {/* Accordion body */}
-                {isOpen && (
-                  <div className="border-t border-gray-100">
-                    {isAddingList && (
-                      <form
-                        onSubmit={e => handleCreateList(e, group.id)}
-                        className="px-5 py-4 bg-indigo-50/40 border-b border-indigo-100"
-                      >
-                        <h3 className="text-sm font-semibold text-gray-700 mb-3">New list in {group.project_name}</h3>
-                        {listFormError && <p className="text-red-600 text-xs mb-3 bg-red-50 px-3 py-2 rounded">{listFormError}</p>}
-                        <div className="grid grid-cols-3 gap-3">
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">Name</label>
-                            <input
-                              required
-                              autoFocus
-                              type="text"
-                              placeholder="e.g. Fruits"
-                              value={listForm.name}
-                              onChange={e => setListForm(f => ({ ...f, name: e.target.value }))}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              ID <span className="text-gray-400 font-normal">(auto)</span>
-                            </label>
-                            <input
-                              type="text"
-                              placeholder="e.g. fruits"
-                              value={listForm.slug}
-                              onChange={e => setListForm(f => ({ ...f, slug: e.target.value }))}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
-                            <input
-                              type="text"
-                              placeholder="Optional"
-                              value={listForm.description}
-                              onChange={e => setListForm(f => ({ ...f, description: e.target.value }))}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                            />
-                          </div>
+                    {/* Nested project accordions */}
+                    {isCollOpen && (
+                      collProjects.length === 0 ? (
+                        <div className="px-6 py-5 text-sm text-gray-400 text-center border-t border-purple-100">
+                          No projects in this collection yet. Hover over any project and click{' '}
+                          <span className="font-medium text-purple-700">📁 Move</span> to add one.
                         </div>
-                        <div className="mt-3 flex justify-end">
-                          <button
-                            type="submit"
-                            disabled={listSubmitting}
-                            className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-                          >
-                            {listSubmitting ? 'Creating…' : 'Create List'}
-                          </button>
+                      ) : (
+                        <div className="border-t border-purple-100 p-3 space-y-2 bg-purple-50/20">
+                          {collProjects.map(g => renderProjectGroup(g))}
                         </div>
-                      </form>
-                    )}
-                    {group.lists.length === 0 && !isAddingList ? (
-                      <div className="px-5 py-6 text-center text-gray-400 text-sm">
-                        No lists yet — click <span className="font-medium text-indigo-600">+ New List</span> to add one.
-                      </div>
-                    ) : (
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="bg-gray-50 border-b border-gray-100">
-                            <th className="px-5 py-2.5 text-left font-semibold text-gray-500 text-xs uppercase tracking-wide">Name</th>
-                            <th className="px-5 py-2.5 text-left font-semibold text-gray-500 text-xs uppercase tracking-wide">ID</th>
-                            <th className="px-5 py-2.5 text-left font-semibold text-gray-500 text-xs uppercase tracking-wide">Choices</th>
-                            <th className="px-5 py-2.5 text-right font-semibold text-gray-500 text-xs uppercase tracking-wide"></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {group.lists.map(list => (
-                            editingId === list.id ? (
-                              <tr key={list.id} className="border-b border-gray-50 last:border-b-0 bg-indigo-50/40">
-                                <td className="px-4 py-2">
-                                  <input
-                                    autoFocus
-                                    type="text"
-                                    value={editForm.name}
-                                    onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
-                                    className="w-full border border-indigo-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                  />
-                                  {editError && <p className="text-red-600 text-xs mt-1">{editError}</p>}
-                                </td>
-                                <td className="px-4 py-2">
-                                  <input
-                                    type="text"
-                                    value={editForm.slug}
-                                    onChange={e => setEditForm(f => ({ ...f, slug: e.target.value }))}
-                                    className="w-full border border-indigo-300 rounded-md px-2 py-1 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                  />
-                                </td>
-                                <td className="px-4 py-2"></td>
-                                <td className="px-4 py-2 text-right whitespace-nowrap">
-                                  <button
-                                    onClick={() => saveEdit(list.id)}
-                                    disabled={editSaving}
-                                    className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors mr-2"
-                                  >
-                                    {editSaving ? 'Saving…' : 'Save'}
-                                  </button>
-                                  <button
-                                    onClick={cancelEdit}
-                                    className="px-3 py-1.5 bg-white border border-gray-300 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-50 transition-colors"
-                                  >
-                                    Cancel
-                                  </button>
-                                </td>
-                              </tr>
-                            ) : (
-                              <tr key={list.id} className="border-b border-gray-50 last:border-b-0 hover:bg-gray-50 transition-colors group/row">
-                                <td className="px-5 py-3 font-medium text-gray-900">{list.name}</td>
-                                <td className="px-5 py-3 font-mono text-gray-500 text-xs">{list.slug}</td>
-                                <td className="px-5 py-3 text-gray-400 text-xs">{list.choices_count}</td>
-                                <td className="px-5 py-3 text-right whitespace-nowrap">
-                                  {confirmDeleteListId === list.id ? (
-                                    <>
-                                      <span className="text-xs text-gray-500 mr-2">Delete list?</span>
-                                      <button
-                                        onClick={() => handleDeleteList(list.id)}
-                                        disabled={deletingListId === list.id}
-                                        className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium hover:bg-red-700 disabled:opacity-50 transition-colors mr-2"
-                                      >
-                                        {deletingListId === list.id ? 'Deleting…' : 'Yes, delete'}
-                                      </button>
-                                      <button
-                                        onClick={() => setConfirmDeleteListId(null)}
-                                        className="px-3 py-1.5 border border-gray-200 text-gray-500 rounded-lg text-xs font-medium hover:bg-gray-50 transition-colors"
-                                      >
-                                        Cancel
-                                      </button>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <button
-                                        onClick={() => startEdit(list)}
-                                        className="px-3 py-1.5 border border-gray-200 text-gray-500 rounded-lg text-xs font-medium hover:bg-gray-100 transition-colors mr-2 opacity-0 group-hover/row:opacity-100"
-                                      >
-                                        Edit
-                                      </button>
-                                      <button
-                                        onClick={() => { cancelEdit(); setConfirmDeleteListId(list.id) }}
-                                        className="px-3 py-1.5 border border-red-200 text-red-500 rounded-lg text-xs font-medium hover:bg-red-50 transition-colors mr-2 opacity-0 group-hover/row:opacity-100"
-                                      >
-                                        Delete
-                                      </button>
-                                      <Link
-                                        to={`/${list.project_slug}/${list.slug}`}
-                                        className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors"
-                                      >
-                                        View →
-                                      </Link>
-                                    </>
-                                  )}
-                                </td>
-                              </tr>
-                            )
-                          ))}
-                        </tbody>
-                      </table>
+                      )
                     )}
                   </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
+                )
+              })}
+
+              {/* Divider when both collections and uncollected projects exist */}
+              {collectionsWithGroupedProjects.length > 0 && uncollectedProjects.length > 0 && (
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1 pt-2 pb-1">
+                  Uncollected projects
+                </p>
+              )}
+
+              {/* ── Standalone (uncollected) projects ── */}
+              {uncollectedProjects.map(group => renderProjectGroup(group))}
+            </div>
+          )}
         </>
       )}
     </div>

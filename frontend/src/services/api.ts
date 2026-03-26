@@ -40,6 +40,7 @@ export interface Project {
   created_at: string;
   updated_at: string;
   choice_lists?: ChoiceList[];
+  collection_memberships?: CollectionMembership[];
 }
 
 export interface PublicProject {
@@ -71,6 +72,56 @@ export interface PublicChoiceList {
 export interface ProjectShare {
   username: string;
   created_at: string;
+}
+
+export interface CollectionMembership {
+  id: number;
+  name: string;
+  slug: string;
+}
+
+export interface CollectionProjectSummary {
+  id: number;
+  slug: string;
+  name: string;
+  description: string;
+  owner_username: string;
+  updated_at: string;
+  list_count: number;
+  order: number;
+  choice_lists?: PublicChoiceList[];
+}
+
+export interface CollectionShare {
+  username: string;
+  created_at: string;
+}
+
+export interface Collection {
+  id: number;
+  slug: string;
+  name: string;
+  description: string;
+  owner: number;
+  owner_username: string;
+  is_public: boolean;
+  role: 'owner' | 'shared';
+  project_count: number;
+  created_at: string;
+  updated_at: string;
+  projects?: CollectionProjectSummary[];
+}
+
+export interface PublicCollection {
+  id: number;
+  slug: string;
+  name: string;
+  description: string;
+  owner_username: string;
+  is_public: boolean;
+  project_count: number;
+  updated_at: string;
+  projects?: CollectionProjectSummary[];
 }
 
 export interface ChoiceList {
@@ -179,6 +230,29 @@ const apiClient = {
   getMe: () => API.get<AuthUser>('/auth/me/'),
   changePassword: (oldPassword: string, newPassword: string) =>
     API.post('/auth/change-password/', { old_password: oldPassword, new_password: newPassword }),
+
+  // Collections
+  getCollections: () => API.get<PaginatedResponse<Collection>>('/collections/'),
+  getCollection: (id: number) => API.get<Collection>(`/collections/${id}/`),
+  createCollection: (data: { name: string; slug: string; description?: string }) =>
+    API.post<Collection>('/collections/', data),
+  updateCollection: (id: number, data: Partial<Collection>) =>
+    API.patch<Collection>(`/collections/${id}/`, data),
+  deleteCollection: (id: number) => API.delete(`/collections/${id}/`),
+  addProjectToCollection: (collectionId: number, projectId: number) =>
+    API.post<Collection>(`/collections/${collectionId}/add_project/`, { project_id: projectId }),
+  removeProjectFromCollection: (collectionId: number, projectId: number) =>
+    API.delete(`/collections/${collectionId}/remove_project/${projectId}/`),
+  getCollectionShares: (id: number) => API.get<CollectionShare[]>(`/collections/${id}/shares/`),
+  shareCollection: (id: number, username: string) =>
+    API.post<{ username: string }>(`/collections/${id}/share/`, { username }),
+  removeCollectionShare: (id: number, username: string) =>
+    API.delete(`/collections/${id}/share/${username}/`),
+
+  // Public collections
+  getPublicCollections: (search?: string) =>
+    API.get<PaginatedResponse<PublicCollection>>('/collections/public/', { params: search ? { search } : {} }),
+  getPublicCollection: (id: number) => API.get<PublicCollection>(`/collections/public/${id}/`),
 };
 
 export default apiClient;

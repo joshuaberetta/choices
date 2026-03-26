@@ -1,9 +1,9 @@
 # Choices — Project Memory
-_Last updated: 2025-07-14_
+_Last updated: 2025-07-15_
 
 ## Current status
-- Last completed phase: Phase 6 — Access Control, Project Sharing & Public Projects
-- Currently working on: Phase 7 — Collections (not yet started)
+- Last completed phase: Phase 7 — Collections
+- Currently working on: Phase 8 — Production Deployment
 
 ## What is implemented
 
@@ -33,6 +33,7 @@ _Last updated: 2025-07-14_
 - `0006_project_slug_unique_per_owner` — slug uniqueness scoped to owner
 - `0007_phase6_access_control` — `Project.is_public`, `ChoiceList.require_auth`, `ProjectShare`
 - `0008_name_generation_default` — changed `name_generation` default from `'uuid'` to `'from_label'`
+- `0009_phase7_collections` — `Collection`, `CollectionProject`, `CollectionShare`
 
 ### Data model summary
 ```
@@ -42,6 +43,9 @@ Project(owner FK, name, slug, created_at, updated_at, is_public)
        └─ Choice(choice_list FK, name, label, order, created_at, updated_at)
             └─ ChoiceExtraValue(choice FK, column FK, value)
 ProjectShare(project FK, user FK, unique_together=('project','user'), created_at)
+Collection(owner FK, name, slug [globally unique], description, is_public, created_at, updated_at)
+  └─ CollectionProject(collection FK, project FK [on_delete=PROTECT], order; unique_together)
+CollectionShare(collection FK, user FK, unique_together=('collection','user'), created_at)
 ```
 
 ### KoboToolbox integration (Phases 2–3)
@@ -138,19 +142,76 @@ ProjectShare(project FK, user FK, unique_together=('project','user'), created_at
 - Choices table (Name/Label) per list, filtered to non-removed choices
 - "Copy CSV URL" button, "Back to Projects" link, "Manage this project" link for owners
 
+### Phase 7: Collections (migration 0009)
+
+**Models added (`backend/api/models.py`):**
+- `Collection(owner FK, name, slug [globally unique], description, is_public, created_at, updated_at)`
+- `CollectionProject(collection FK, project FK [on_delete=PROTECT], order; unique_together)`
+- `CollectionShare(collection FK, user FK, unique_together)`
+
+**Authorization rules:**
+| Action | Who |
+|--------|-----|
+| `GET /api/collections/` | Owner or shared user (Session Auth) |
+| Create/update/delete collection | Owner only |
+| Toggle `is_public` / manage shares | Owner only |
+| Add/remove projects | Owner or shared user |
+| `GET /api/collections/public/` | Anyone |
+| `GET /api/collections/public/{id}/` | Anyone |
+
+**Backend — `backend/api/permissions.py`:**
+- `IsCollectionAuthorized`: True if owner or `CollectionShare` member
+
+**Backend — `backend/api/serializers.py`:**
+- `ProjectSerializer.collection_memberships` — `SerializerMethodField` returning `[{id, name, slug}]`
+- `CollectionProjectSummarySerializer` — id, name, slug
+- `CollectionSerializer` — full collection + role (owner/shared), owner_username, project_count, projects
+- `PublicCollectionProjectSerializer` — project with full `choice_lists` (non-removed choices)
+- `PublicCollectionSerializer` — collection + projects
+
+**Backend — `backend/api/views.py`:**
+- `CollectionViewSet`: `add_project`, `remove_project`, `shares`, `share`, `unshare` custom actions; `_require_owner()` / `_require_member()` helpers
+- `PublicCollectionViewSet`: AllowAny, read-only, `?search=`; registered before router
+
+**Backend — `backend/api/urls.py`:**
+- `collections/public/` and `collections/public/<int:pk>/` registered before `include(router.urls)`
+
+**Frontend — `frontend/src/services/api.ts`:**
+- Interfaces: `CollectionMembership`, `CollectionProjectSummary`, `CollectionShare`, `Collection`, `PublicCollection`
+- `Project.collection_memberships?: CollectionMembership[]`
+- 10 new API methods: `getCollections`, `createCollection`, `getCollection`, `updateCollection`, `deleteCollection`, `addProjectToCollection`, `removeProjectFromCollection`, `getCollectionShares`, `shareCollection`, `unshareCollection`, `getPublicCollections`, `getPublicCollection`
+
+**Frontend — `frontend/src/App.tsx`:**
+- `/collections/public` and `/collections/public/:id` routes registered BEFORE `/collections` and `/collections/:id`
+- "Collections" nav link (auth-required) and "Public Collections" nav link (always visible)
+
+**Frontend — new pages:**
+- `MyCollectionsPage.tsx` — create-collection form (auto-slug from name), own+shared collection cards, delete (owner only)
+- `CollectionDetailPage.tsx` — settings panel (name/description/is_public toggle + share management), add/remove projects via dropdown
+- `PublicCollectionsPage.tsx` — `?search=` filter, collection cards linking to detail
+- `PublicCollectionDetailPage.tsx` — expandable project→list accordion, choices table, "Copy CSV URL", "My Collections →" link
+
+**Frontend — `frontend/src/pages/ChoiceListsPage.tsx`:**
+- Added `collection_memberships: {id, name, slug}[]` to grouped project data
+- Renders purple `📁 collection-name` chip Links in project header rows → navigate to `/collections/{id}`
+
 ## Key decisions & notes
 - SQLite for dev/staging — no PostgreSQL migration needed yet
-- Slug uniqueness is scoped per owner (not globally), enforced in `0006`
-- `BasicAuthentication` must NOT be in `DEFAULT_AUTHENTICATION_CLASSES` — only on individual Kobo write views
+- Slug uniqueness is scoped per owner for projects (not globally), enforced in `0006`
+- Collection slugs are globally unique (not per-owner)
+- `BaseAuthentication` must NOT be in `DEFAULT_AUTHENTICATION_CLASSES` — only on individual Kobo write views
 - `KoboCSVExportView` must keep `authentication_classes=[]` (no `WWW-Authenticate` header leakage)
 - `PermissionDenied` comes from `rest_framework.exceptions`, not `rest_framework.permissions`
 - `Prefetch` name collision in views.py resolved with `from django.db.models import Prefetch as DjPrefetch`
 - Public endpoint URLs must be registered before the DRF router in `urls.py`
 - `from_label` is now the default name generation mode (changed in migration 0008)
+- `CollectionViewSet` uses integer `id` as lookup field (not slug)
+- `CollectionProject.project` uses `on_delete=PROTECT` — must remove from collection before deleting the project
+- `CollectionShare` does NOT cascade project-level permissions — collection sharing is separate from project sharing
+- `/collections/public` and `/collections/public/:id` React routes must be registered before `/collections/:id`
 - `memory.md`, `README.md`, and `HelpPage.tsx` should all be updated at the end of each phase
 
 ## What's next
-- Phase 7: Collections — grouping of projects or choice lists into named collections for easier discovery
 - Phase 8: Production Deployment — PostgreSQL, environment hardening, domain config for `choices.imtools.info`
 
 ## File/path quick-reference
@@ -170,6 +231,10 @@ ProjectShare(project FK, user FK, unique_together=('project','user'), created_at
 - `frontend/src/pages/HelpPage.tsx` — user-facing help documentation
 - `frontend/src/components/ChangePasswordModal.tsx` — password change modal
 - `frontend/src/App.tsx` — routes (public project route added before protected routes)
+- `frontend/src/pages/MyCollectionsPage.tsx` — collection list + create form
+- `frontend/src/pages/CollectionDetailPage.tsx` — collection settings, share management, project list
+- `frontend/src/pages/PublicCollectionsPage.tsx` — public collection browser with search
+- `frontend/src/pages/PublicCollectionDetailPage.tsx` — public collection with nested project/list/choices tree
 - `nginx/nginx.conf` — reverse proxy config
 - `plan.md` — Stage 1 plan (Phases 1–5, all complete)
-- `plan-stage2.md` — Stage 2 plan (Phases 6–8; Phase 6 complete)
+- `plan-stage2.md` — Stage 2 plan (Phases 6–8; Phases 6–7 complete)

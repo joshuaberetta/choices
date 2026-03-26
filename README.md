@@ -79,6 +79,22 @@ ProjectShare          (grants a non-owner user write access to a project)
 ├── project           (FK → Project)
 └── user              (FK → User)
 
+Collection            (named grouping of Projects)
+├── slug              (globally unique)
+├── name
+├── description
+├── is_public         (bool; if true, appears on Public Collections page)
+└── owner             (FK → User)
+
+CollectionProject     (M2M join; a project may belong to many collections)
+├── collection        (FK → Collection)
+├── project           (FK → Project; on_delete=PROTECT)
+└── order
+
+CollectionShare       (grants a non-owner user access to manage a collection)
+├── collection        (FK → Collection)
+└── user              (FK → User)
+
 ChoiceList
 ├── project           (FK → Project)
 ├── slug              (e.g. "fruits"; unique within project)
@@ -182,7 +198,24 @@ Base path: `/api/` — requires session authentication (see [Authentication API]
 | `GET` | `/api/projects/public/` | Public project discovery (no auth; supports `?search=`) |
 | `GET` | `/api/projects/public/{id}/` | Get a public project with its choice lists and choices (no auth) |
 
-Project responses include a `role` field (`"owner"` or `"shared"`) and `owner_username`.
+Project responses include a `role` field (`"owner"` or `"shared"`), `owner_username`, and `collection_memberships` (list of `{id, name, slug}`).
+
+#### Collections
+
+| Method | URL | Description |
+|--------|-----|-------------|
+| `GET` | `/api/collections/` | List owned + shared collections |
+| `POST` | `/api/collections/` | Create a collection |
+| `GET` | `/api/collections/{id}/` | Collection detail with member projects |
+| `PATCH` | `/api/collections/{id}/` | Update (owner only for name/description/is_public) |
+| `DELETE` | `/api/collections/{id}/` | Delete (owner only) |
+| `POST` | `/api/collections/{id}/add_project/` | Add a project: `{"project_id": N}` |
+| `DELETE` | `/api/collections/{id}/remove_project/{project_id}/` | Remove a project |
+| `GET` | `/api/collections/{id}/shares/` | List shares (owner only) |
+| `POST` | `/api/collections/{id}/share/` | Share: `{"username": "..."}` (owner only) |
+| `DELETE` | `/api/collections/{id}/share/{username}/` | Remove share (owner only) |
+| `GET` | `/api/collections/public/` | Public collections (no auth; supports `?search=`) |
+| `GET` | `/api/collections/public/{id}/` | Public collection detail with projects and CSV links (no auth) |
 
 #### Choice Lists
 
@@ -312,6 +345,42 @@ Disable `require_auth` only if you need KoboToolbox to call the endpoints withou
 ### Public projects
 
 Owners can mark a project as **public** via the Settings panel. Public projects appear in the unauthenticated **Public Projects** tab and via `GET /api/projects/public/`. The detail endpoint (`/api/projects/public/{id}/`) returns the project's choice lists and their non-removed choices — useful for read-only embeds or sharing data with collaborators who don't have an account.
+
+---
+
+### Collections
+
+Collections are named groups of projects. Use them to organise related projects together — for example a *Global PCodes* collection with one project per country.
+
+**Key behaviours:**
+- A project can belong to multiple collections.
+- Collection membership does **not** grant additional edit permissions on the member projects. Project access is still controlled independently by `ProjectShare`.
+- Marking a collection as public makes its listing discoverable to anyone on the **Public Collections** page; it does not change who can edit the member projects.
+- Deleting a collection does **not** delete its member projects.
+
+**API endpoints (authenticated):**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/collections/` | My collections (owned + shared); includes `role` |
+| `POST` | `/api/collections/` | Create a collection |
+| `GET` | `/api/collections/{id}/` | Collection detail with member project list |
+| `PATCH` | `/api/collections/{id}/` | Update (name/description/is_public — owner only) |
+| `DELETE` | `/api/collections/{id}/` | Delete (owner only; does not delete projects) |
+| `POST` | `/api/collections/{id}/add_project/` | Add a project: `{"project_id": N}` (owner or share member) |
+| `DELETE` | `/api/collections/{id}/remove_project/{project_id}/` | Remove a project |
+| `GET` | `/api/collections/{id}/shares/` | List collection shares (owner only) |
+| `POST` | `/api/collections/{id}/share/` | Share with a user: `{"username": "..."}` (owner only) |
+| `DELETE` | `/api/collections/{id}/share/{username}/` | Remove share (owner only) |
+
+**Public API endpoints (no auth):**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/collections/public/` | List public collections; supports `?search=` |
+| `GET` | `/api/collections/public/{id}/` | Public collection detail with projects and CSV links |
+
+Collection responses include a `role` field (`"owner"` or `"shared"`) and `owner_username`.
 
 ---
 
