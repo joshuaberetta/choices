@@ -114,8 +114,23 @@ class PublicChoiceListSerializer(serializers.ModelSerializer):
         fields = ['id', 'slug', 'name', 'description', 'updated_at', 'choices']
 
 
+class PublicProjectListSerializer(serializers.ModelSerializer):
+    """Lightweight project summary for public discovery list (no choices)"""
+    owner_username = serializers.CharField(source='owner.username', read_only=True)
+    list_count = serializers.SerializerMethodField()
+
+    def get_list_count(self, obj):
+        if hasattr(obj, 'list_count_annotation'):
+            return obj.list_count_annotation
+        return obj.choice_lists.count()
+
+    class Meta:
+        model = Project
+        fields = ['id', 'slug', 'name', 'description', 'owner_username', 'list_count', 'updated_at']
+
+
 class PublicProjectSerializer(serializers.ModelSerializer):
-    """Read-only serializer for public project discovery"""
+    """Read-only serializer for public project detail (includes choice lists with choices)"""
     owner_username = serializers.CharField(source='owner.username', read_only=True)
     list_count = serializers.SerializerMethodField()
     choice_lists = PublicChoiceListSerializer(many=True, read_only=True)
@@ -201,11 +216,10 @@ class PublicCollectionProjectSerializer(serializers.ModelSerializer):
         fields = ['id', 'slug', 'name', 'description', 'owner_username', 'updated_at', 'list_count', 'choice_lists']
 
 
-class PublicCollectionSerializer(serializers.ModelSerializer):
-    """Read-only collection for public discovery"""
+class PublicCollectionListSerializer(serializers.ModelSerializer):
+    """Lightweight collection summary for the public discovery list (no choices)"""
     owner_username = serializers.CharField(source='owner.username', read_only=True)
     project_count = serializers.SerializerMethodField()
-    projects = PublicCollectionProjectSerializer(source='collection_projects', many=True, read_only=True)
 
     def get_project_count(self, obj):
         if hasattr(obj, 'project_count_annotation'):
@@ -214,4 +228,19 @@ class PublicCollectionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Collection
-        fields = ['id', 'slug', 'name', 'description', 'owner_username', 'is_public', 'project_count', 'updated_at', 'projects']
+        fields = ['id', 'slug', 'name', 'description', 'owner_username', 'is_public', 'project_count', 'updated_at']
+
+
+class PublicCollectionSerializer(serializers.ModelSerializer):
+    """Read-only collection metadata for the public detail view (projects loaded separately)"""
+    owner_username = serializers.CharField(source='owner.username', read_only=True)
+    project_count = serializers.SerializerMethodField()
+
+    def get_project_count(self, obj):
+        if hasattr(obj, 'project_count_annotation'):
+            return obj.project_count_annotation
+        return obj.collection_projects.count()
+
+    class Meta:
+        model = Collection
+        fields = ['id', 'slug', 'name', 'description', 'owner_username', 'is_public', 'project_count', 'updated_at']

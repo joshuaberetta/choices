@@ -1,0 +1,7 @@
+{
+  "choices_config": {
+    "base_url": "http://localhost:8000",
+    "username": "kobo",
+    "password": "kobokobo"
+  }
+}

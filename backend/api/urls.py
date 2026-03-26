@@ -23,6 +23,7 @@ urlpatterns = [
     # /api/collections/public/ takes precedence over the id pattern.
     path('collections/public/', PublicCollectionViewSet.as_view({'get': 'list'}), name='public-collections-list'),
     path('collections/public/<int:pk>/', PublicCollectionViewSet.as_view({'get': 'retrieve'}), name='public-collections-detail'),
+    path('collections/public/<int:pk>/projects/', PublicCollectionViewSet.as_view({'get': 'projects'}), name='public-collections-projects'),
     path('', include(router.urls)),
     path('auth/csrf/', CSRFView.as_view(), name='auth-csrf'),
     path('auth/login/', LoginView.as_view(), name='auth-login'),

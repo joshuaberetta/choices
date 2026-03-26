@@ -56,7 +56,7 @@ export default function MyCollectionsPage() {
   }
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm('Delete this collection? This will not delete any projects.')) return
+    if (!window.confirm('Delete this collection? This will permanently delete all projects and choice lists within it.')) return
     setDeletingId(id)
     try {
       await apiClient.deleteCollection(id)

@@ -13,6 +13,10 @@ export default function CollectionDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Pagination for projects list
+  const [projectPage, setProjectPage] = useState(1)
+  const PROJ_PAGE_SIZE = 10
+
   // Settings panel
   const [showSettings, setShowSettings] = useState(false)
   const [editName, setEditName] = useState('')
@@ -99,7 +103,7 @@ export default function CollectionDetailPage() {
 
   // Delete collection
   const handleDelete = async () => {
-    if (!window.confirm('Delete this collection? This will not delete any projects.')) return
+    if (!window.confirm('Delete this collection? This will permanently delete all projects and choice lists within it.')) return
     try {
       await apiClient.deleteCollection(collectionId)
       navigate('/collections')
@@ -361,42 +365,73 @@ export default function CollectionDetailPage() {
           No projects in this collection yet.{' '}
           {(isOwner || collection.role === 'shared') && 'Add a project using the dropdown above.'}
         </div>
-      ) : (
-        <div className="space-y-3">
-          {collection.projects.map(p => (
-            <div key={p.id} className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:border-gray-300 transition-colors">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <Link
-                    to={`/`}
-                    state={{ highlightProject: p.slug }}
-                    className="text-base font-semibold text-gray-900 hover:text-indigo-600 transition-colors"
-                  >
-                    {p.name}
-                  </Link>
-                  {p.description && <p className="text-sm text-gray-500 mt-0.5 line-clamp-1">{p.description}</p>}
-                  <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
-                    <span>{p.list_count} list{p.list_count !== 1 ? 's' : ''}</span>
-                    <span>Updated {new Date(p.updated_at).toLocaleDateString()}</span>
-                    {p.owner_username !== user?.username && (
-                      <span className="text-amber-600">by {p.owner_username}</span>
+      ) : (() => {
+        const allProjects = collection.projects!
+        const numPages = Math.ceil(allProjects.length / PROJ_PAGE_SIZE)
+        const safePage = Math.min(projectPage, numPages)
+        const pageProjects = allProjects.slice((safePage - 1) * PROJ_PAGE_SIZE, safePage * PROJ_PAGE_SIZE)
+        return (
+          <>
+            {numPages > 1 && (
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs text-gray-400">
+                  Showing {(safePage - 1) * PROJ_PAGE_SIZE + 1}–{Math.min(safePage * PROJ_PAGE_SIZE, allProjects.length)} of {allProjects.length} project{allProjects.length !== 1 ? 's' : ''}
+                </p>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setProjectPage(p => Math.max(p - 1, 1))} disabled={safePage <= 1}
+                    className="px-2.5 py-1 text-xs border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors">
+                    ← Prev
+                  </button>
+                  {Array.from({ length: numPages }, (_, i) => i + 1).map(p => (
+                    <button key={p} onClick={() => setProjectPage(p)}
+                      className={`px-2.5 py-1 text-xs border rounded-lg transition-colors ${p === safePage ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                      {p}
+                    </button>
+                  ))}
+                  <button onClick={() => setProjectPage(p => Math.min(p + 1, numPages))} disabled={safePage >= numPages}
+                    className="px-2.5 py-1 text-xs border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors">
+                    Next →
+                  </button>
+                </div>
+              </div>
+            )}
+            <div className="space-y-3">
+              {pageProjects.map(p => (
+                <div key={p.id} className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:border-gray-300 transition-colors">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <Link
+                        to={`/`}
+                        state={{ highlightProject: p.slug }}
+                        className="text-base font-semibold text-gray-900 hover:text-indigo-600 transition-colors"
+                      >
+                        {p.name}
+                      </Link>
+                      {p.description && <p className="text-sm text-gray-500 mt-0.5 line-clamp-1">{p.description}</p>}
+                      <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
+                        <span>{p.list_count} list{p.list_count !== 1 ? 's' : ''}</span>
+                        <span>Updated {new Date(p.updated_at).toLocaleDateString()}</span>
+                        {p.owner_username !== user?.username && (
+                          <span className="text-amber-600">by {p.owner_username}</span>
+                        )}
+                      </div>
+                    </div>
+                    {(isOwner || collection.role === 'shared') && (
+                      <button
+                        onClick={() => handleRemoveProject(p.id)}
+                        disabled={removingProjectId === p.id}
+                        className="text-sm text-red-500 hover:text-red-700 disabled:opacity-50 px-3 py-1.5 rounded-lg border border-red-200 hover:border-red-300 transition-colors shrink-0"
+                      >
+                        {removingProjectId === p.id ? 'Removing…' : 'Remove'}
+                      </button>
                     )}
                   </div>
                 </div>
-                {(isOwner || collection.role === 'shared') && (
-                  <button
-                    onClick={() => handleRemoveProject(p.id)}
-                    disabled={removingProjectId === p.id}
-                    className="text-sm text-red-500 hover:text-red-700 disabled:opacity-50 px-3 py-1.5 rounded-lg border border-red-200 hover:border-red-300 transition-colors shrink-0"
-                  >
-                    {removingProjectId === p.id ? 'Removing…' : 'Remove'}
-                  </button>
-                )}
-              </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          </>
+        )
+      })()}
     </div>
   )
 }

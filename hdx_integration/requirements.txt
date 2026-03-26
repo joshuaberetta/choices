@@ -1,0 +1,4 @@
+pandas
+hdx-python-api
+openpyxl
+requests

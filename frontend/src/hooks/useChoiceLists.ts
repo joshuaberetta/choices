@@ -90,8 +90,8 @@ export const useProjects = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await apiClient.getProjects();
-      setProjects(response.data.results);
+      const results = await apiClient.getProjectsAll();
+      setProjects(results);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch projects');
     } finally {

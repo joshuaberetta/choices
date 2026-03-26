@@ -859,25 +859,33 @@ class KoboDeleteChoiceView(APIView):
 
 class PublicProjectViewSet(viewsets.ReadOnlyModelViewSet):
     """Read-only viewset for publicly discoverable projects. No authentication required."""
-    serializer_class = None  # set per action
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def get_serializer_class(self):
-        from .serializers import PublicProjectSerializer
-        return PublicProjectSerializer
+        from .serializers import PublicProjectSerializer, PublicProjectListSerializer
+        if self.action == 'retrieve':
+            return PublicProjectSerializer
+        return PublicProjectListSerializer
 
     def get_queryset(self):
         from django.db.models import Count
         from django.db.models import Prefetch as DjPrefetch
         qs = Project.objects.filter(is_public=True).annotate(
             list_count_annotation=Count('choice_lists')
-        ).prefetch_related(
-            DjPrefetch('choice_lists'),
-            DjPrefetch('choice_lists__columns'),
-            DjPrefetch('choice_lists__choices'),
-            DjPrefetch('choice_lists__choices__extra_values'),
         )
+        # On the list view, hide projects that belong to a collection — find them there instead
+        if self.action == 'list':
+            qs = qs.filter(collection_membership__isnull=True)
+        if self.action == 'retrieve':
+            qs = qs.prefetch_related(
+                DjPrefetch('choice_lists'),
+                DjPrefetch('choice_lists__columns'),
+                DjPrefetch('choice_lists__choices'),
+                DjPrefetch('choice_lists__choices__extra_values'),
+            )
+        else:
+            qs = qs.select_related('owner')
         search = self.request.query_params.get('search', '').strip()
         if search:
             qs = qs.filter(
@@ -891,7 +899,7 @@ class PublicProjectViewSet(viewsets.ReadOnlyModelViewSet):
 # ---------------------------------------------------------------------------
 
 from .models import Collection, CollectionProject, CollectionShare
-from .serializers import CollectionSerializer, PublicCollectionSerializer
+from .serializers import CollectionSerializer, PublicCollectionSerializer, PublicCollectionProjectSerializer
 
 
 class CollectionViewSet(viewsets.ModelViewSet):
@@ -936,6 +944,8 @@ class CollectionViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         self._require_owner(instance)
+        # Delete all projects (and their choice lists) that belong to this collection
+        Project.objects.filter(collection_membership__collection=instance).delete()
         return super().destroy(request, *args, **kwargs)
 
     # ------------------------------------------------------------------ projects
@@ -1014,21 +1024,17 @@ class CollectionViewSet(viewsets.ModelViewSet):
 
 class PublicCollectionViewSet(viewsets.ReadOnlyModelViewSet):
     """Read-only viewset for publicly discoverable collections. No authentication required."""
-    serializer_class = PublicCollectionSerializer
     permission_classes = [AllowAny]
     authentication_classes = []
+
+    def get_serializer_class(self):
+        return PublicCollectionSerializer
 
     def get_queryset(self):
         from django.db.models import Count
         qs = Collection.objects.filter(is_public=True).annotate(
             project_count_annotation=Count('collection_projects')
-        ).prefetch_related(
-            'collection_projects__project__owner',
-            'collection_projects__project__choice_lists',
-            'collection_projects__project__choice_lists__columns',
-            'collection_projects__project__choice_lists__choices',
-            'collection_projects__project__choice_lists__choices__extra_values',
-        )
+        ).select_related('owner')
         search = self.request.query_params.get('search', '').strip()
         if search:
             qs = qs.filter(
@@ -1037,4 +1043,37 @@ class PublicCollectionViewSet(viewsets.ReadOnlyModelViewSet):
                 | Q(owner__username__icontains=search)
             )
         return qs.order_by('-updated_at')
+
+    def projects(self, request, pk=None):
+        """Paginated list of projects in this public collection, with their choice lists and choices."""
+        collection = self.get_object()
+        from django.core.paginator import Paginator, InvalidPage
+        page_size = min(max(int(request.query_params.get('page_size', 10)), 1), 50)
+        page_num = max(int(request.query_params.get('page', 1)), 1)
+        search = request.query_params.get('search', '').strip()
+        qs = collection.collection_projects.select_related(
+            'project__owner',
+        ).prefetch_related(
+            'project__choice_lists',
+            'project__choice_lists__columns',
+            'project__choice_lists__choices',
+            'project__choice_lists__choices__extra_values',
+        ).order_by('order')
+        if search:
+            qs = qs.filter(
+                Q(project__name__icontains=search) | Q(project__description__icontains=search)
+            )
+        paginator = Paginator(qs, page_size)
+        try:
+            page = paginator.page(page_num)
+        except InvalidPage:
+            page = paginator.page(1)
+        serializer = PublicCollectionProjectSerializer(page.object_list, many=True)
+        return Response({
+            'count': paginator.count,
+            'num_pages': paginator.num_pages,
+            'page': page.number,
+            'page_size': page_size,
+            'results': serializer.data,
+        })
 

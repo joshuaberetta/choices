@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { useChoiceLists, useProjects } from '../hooks/useChoiceLists'
+import { useProjects } from '../hooks/useChoiceLists'
 import apiClient, {
   type Project,
   type PublicProject,
@@ -259,8 +259,7 @@ function ProjectSettingsPanel({
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function ChoiceListsPage() {
-  const { choiceLists, loading, error, refetch } = useChoiceLists()
-  const { projects, refetch: refetchProjects } = useProjects()
+  const { projects, loading, error, refetch: refetchProjects } = useProjects()
 
   const [activeTab, setActiveTab] = useState<'my' | 'public'>('my')
   const [settingsProjectSlug, setSettingsProjectSlug] = useState<string | null>(null)
@@ -288,27 +287,11 @@ export default function ChoiceListsPage() {
         role: p.role ?? 'owner',
         owner_username: p.owner_username ?? null,
         collection_memberships: p.collection_memberships ?? [],
-        lists: [],
+        lists: p.choice_lists ?? [],
       })
     }
-    for (const list of choiceLists) {
-      if (!map.has(list.project)) {
-        map.set(list.project, {
-          id: list.project,
-          project_name: list.project_name,
-          project_slug: list.project_slug,
-          description: '',
-          is_public: false,
-          role: 'owner',
-          owner_username: null,
-          collection_memberships: [],
-          lists: [],
-        })
-      }
-      map.get(list.project)!.lists.push(list)
-    }
     return Array.from(map.values()).sort((a, b) => a.project_name.localeCompare(b.project_name))
-  }, [choiceLists, projects])
+  }, [projects])
 
   // Project accordion collapse state (all expanded by default)
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
@@ -327,6 +310,9 @@ export default function ChoiceListsPage() {
   const [collectionForm, setCollectionForm] = useState({ name: '', slug: '', description: '' })
   const [collectionSubmitting, setCollectionSubmitting] = useState(false)
   const [collectionFormError, setCollectionFormError] = useState<string | null>(null)
+  const [collectionSearches, setCollectionSearches] = useState<Map<number, string>>(new Map())
+  const [collectionPages, setCollectionPages] = useState<Map<number, number>>(new Map())
+  const COLL_PAGE_SIZE = 10
 
   const fetchCollections = useCallback(async () => {
     try {
@@ -429,7 +415,7 @@ export default function ChoiceListsPage() {
     setEditSaving(true); setEditError(null)
     try {
       await apiClient.updateChoiceList(id, { name: editForm.name, slug: editForm.slug })
-      setEditingId(null); refetch()
+      setEditingId(null); refetchProjects()
     } catch {
       setEditError('Failed to save. Check that the slug is unique and valid.')
     } finally { setEditSaving(false) }
@@ -491,7 +477,7 @@ export default function ChoiceListsPage() {
     try {
       await apiClient.deleteProject(slug)
       setConfirmDeleteProjectId(null)
-      refetchProjects(); refetch()
+      refetchProjects()
     } catch { /* keep confirm open */ } finally { setDeletingProjectId(null) }
   }
 
@@ -503,7 +489,7 @@ export default function ChoiceListsPage() {
     setDeletingListId(id)
     try {
       await apiClient.deleteChoiceList(id)
-      setConfirmDeleteListId(null); refetch()
+      setConfirmDeleteListId(null); refetchProjects()
     } catch { /* keep confirm open */ } finally { setDeletingListId(null) }
   }
 
@@ -529,7 +515,7 @@ export default function ChoiceListsPage() {
         slug: listForm.slug || listForm.name.toLowerCase().replace(/\s+/g, '-'),
         description: listForm.description,
       })
-      closeNewList(); refetch()
+      closeNewList(); refetchProjects()
     } catch {
       setListFormError('Failed to create choice list. Check that the slug is unique and valid.')
     } finally { setListSubmitting(false) }
@@ -1079,11 +1065,85 @@ export default function ChoiceListsPage() {
                           No projects in this collection yet. Hover over any project and click{' '}
                           <span className="font-medium text-purple-700">📁 Move</span> to add one.
                         </div>
-                      ) : (
-                        <div className="border-t border-purple-100 p-3 space-y-2 bg-purple-50/20">
-                          {collProjects.map(g => renderProjectGroup(g))}
-                        </div>
-                      )
+                      ) : (() => {
+                        const q = (collectionSearches.get(collection.id) ?? '').toLowerCase()
+                        const filtered = q
+                          ? collProjects.filter(g =>
+                              g.project_name.toLowerCase().includes(q) ||
+                              (g.description ?? '').toLowerCase().includes(q)
+                            )
+                          : collProjects
+                        const numPages = Math.ceil(filtered.length / COLL_PAGE_SIZE)
+                        const pg = Math.min(collectionPages.get(collection.id) ?? 1, Math.max(numPages, 1))
+                        const pageItems = filtered.slice((pg - 1) * COLL_PAGE_SIZE, pg * COLL_PAGE_SIZE)
+                        return (
+                          <div className="border-t border-purple-100 bg-purple-50/20">
+                            {/* Search bar — only show when there are enough projects */}
+                            {collProjects.length > COLL_PAGE_SIZE && (
+                              <div className="px-3 pt-3">
+                                <input
+                                  type="text"
+                                  placeholder="Search projects…"
+                                  value={collectionSearches.get(collection.id) ?? ''}
+                                  onChange={e => {
+                                    const val = e.target.value
+                                    setCollectionSearches(m => new Map(m).set(collection.id, val))
+                                    setCollectionPages(m => new Map(m).set(collection.id, 1))
+                                  }}
+                                  className="w-full border border-purple-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                                />
+                              </div>
+                            )}
+                            {/* Pagination header */}
+                            {numPages > 1 && (
+                              <div className="flex items-center justify-between px-3 py-2 text-xs text-gray-400">
+                                <span>
+                                  {filtered.length} project{filtered.length !== 1 ? 's' : ''}
+                                  {q ? ` matching "${collectionSearches.get(collection.id)}"` : ''}
+                                </span>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => setCollectionPages(m => new Map(m).set(collection.id, Math.max(pg - 1, 1)))}
+                                    disabled={pg <= 1}
+                                    className="px-2 py-0.5 border border-purple-200 rounded text-purple-600 hover:bg-purple-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                                  >
+                                    ← Prev
+                                  </button>
+                                  {Array.from({ length: numPages }, (_, i) => i + 1).map(p => (
+                                    <button
+                                      key={p}
+                                      onClick={() => setCollectionPages(m => new Map(m).set(collection.id, p))}
+                                      className={`px-2 py-0.5 border rounded transition-colors ${
+                                        p === pg
+                                          ? 'bg-purple-600 text-white border-purple-600'
+                                          : 'border-purple-200 text-purple-600 hover:bg-purple-50'
+                                      }`}
+                                    >
+                                      {p}
+                                    </button>
+                                  ))}
+                                  <button
+                                    onClick={() => setCollectionPages(m => new Map(m).set(collection.id, Math.min(pg + 1, numPages)))}
+                                    disabled={pg >= numPages}
+                                    className="px-2 py-0.5 border border-purple-200 rounded text-purple-600 hover:bg-purple-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                                  >
+                                    Next →
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                            <div className="p-3 space-y-2">
+                              {pageItems.length === 0 ? (
+                                <p className="text-xs text-center text-gray-400 py-3">
+                                  No projects match &ldquo;{collectionSearches.get(collection.id)}&rdquo;
+                                </p>
+                              ) : (
+                                pageItems.map(g => renderProjectGroup(g))
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })()
                     )}
                   </div>
                 )

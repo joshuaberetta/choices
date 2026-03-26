@@ -92,6 +92,14 @@ export interface CollectionProjectSummary {
   choice_lists?: PublicChoiceList[];
 }
 
+export interface CollectionProjectsPage {
+  count: number;
+  num_pages: number;
+  page: number;
+  page_size: number;
+  results: CollectionProjectSummary[];
+}
+
 export interface CollectionShare {
   username: string;
   created_at: string;
@@ -169,6 +177,21 @@ export interface Choice {
 const apiClient = {
   // Projects
   getProjects: () => API.get<PaginatedResponse<Project>>('/projects/'),
+  getProjectsAll: async (): Promise<Project[]> => {
+    let results: Project[] = [];
+    let relUrl: string | null = '/projects/';
+    while (relUrl) {
+      const res = await API.get<PaginatedResponse<Project>>(relUrl);
+      results = [...results, ...res.data.results];
+      if (res.data.next) {
+        const parsed = new URL(res.data.next);
+        relUrl = parsed.pathname.replace(/^\/api/, '') + parsed.search;
+      } else {
+        relUrl = null;
+      }
+    }
+    return results;
+  },
   getProject: (id: string | number) => API.get<Project>(`/projects/${id}/`),
   createProject: (data: Partial<Project>) => API.post<Project>('/projects/', data),
   updateProject: (id: string | number, data: Partial<Project>) =>
@@ -253,6 +276,8 @@ const apiClient = {
   getPublicCollections: (search?: string) =>
     API.get<PaginatedResponse<PublicCollection>>('/collections/public/', { params: search ? { search } : {} }),
   getPublicCollection: (id: number) => API.get<PublicCollection>(`/collections/public/${id}/`),
+  getPublicCollectionProjects: (id: number, page = 1, pageSize = 10, search = '') =>
+    API.get<CollectionProjectsPage>(`/collections/public/${id}/projects/`, { params: { page, page_size: pageSize, ...(search ? { search } : {}) } }),
 };
 
 export default apiClient;
