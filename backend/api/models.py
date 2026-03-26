@@ -9,6 +9,7 @@ class Project(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='projects')
+    is_public = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -37,13 +38,17 @@ class ChoiceList(models.Model):
     ]
     name_generation = models.CharField(
         max_length=20,
-        default='uuid',
+        default='from_label',
         choices=NAME_GENERATION_CHOICES,
         help_text="How to auto-generate the choice name/value when adding a new choice",
     )
     name_max_length = models.PositiveIntegerField(
         default=0,
         help_text="Maximum length for label-derived names (0 = no limit)",
+    )
+    require_auth = models.BooleanField(
+        default=True,
+        help_text="If False, /add and /remove are openly writable without credentials",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -97,3 +102,16 @@ class ChoiceExtraValue(models.Model):
 
     def __str__(self):
         return f"{self.choice} – {self.column.name}: {self.value}"
+
+
+class ProjectShare(models.Model):
+    """Grants a user access to a project they don't own"""
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='shares')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='shared_projects')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('project', 'user')
+
+    def __str__(self):
+        return f"{self.user.username} → {self.project}"

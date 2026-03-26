@@ -1,16 +1,16 @@
 from django.contrib import admin
-from .models import Project, ChoiceList, Choice
+from .models import Project, ChoiceList, Choice, ProjectShare
 
 
 @admin.register(Project)
 class ProjectAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'owner', 'created_at')
+    list_display = ('name', 'slug', 'owner', 'is_public', 'created_at')
     search_fields = ('name', 'slug')
-    list_filter = ('owner',)
+    list_filter = ('owner', 'is_public')
     readonly_fields = ('created_at', 'updated_at')
     fieldsets = (
         ('Project Info', {
-            'fields': ('name', 'slug', 'description', 'owner', 'created_at', 'updated_at')
+            'fields': ('name', 'slug', 'description', 'owner', 'is_public', 'created_at', 'updated_at')
         }),
     )
 
@@ -40,3 +40,11 @@ class ChoiceAdmin(admin.ModelAdmin):
             'fields': ('choice_list', 'label', 'value', 'order', 'created_at')
         }),
     )
+
+
+@admin.register(ProjectShare)
+class ProjectShareAdmin(admin.ModelAdmin):
+    list_display = ('project', 'user', 'created_at')
+    search_fields = ('project__name', 'user__username')
+    list_filter = ('project',)
+    readonly_fields = ('created_at',)

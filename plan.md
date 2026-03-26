@@ -14,6 +14,44 @@ A web service that integrates into KoboToolbox workflows to manage external choi
 
 ---
 
+## §0 — memory.md Convention
+
+`memory.md` lives at the root of the repo and is updated **at the end of every completed phase or major task**. Its purpose is to give a new context window enough information to resume work without re-reading the entire plan.
+
+**When to update:** immediately after all checklist items for a phase are ticked off.
+
+**Format template:**
+```md
+# Choices — Project Memory
+_Last updated: YYYY-MM-DD_
+
+## Current status
+- Last completed phase: Phase X — <short title>
+- Currently working on: Phase Y — <short title>
+
+## What is implemented
+- <bullet per major feature/component already built>
+
+## Key decisions & notes
+- <any non-obvious choices made, gotchas, config specifics>
+
+## What's next
+- <ordered list of the next concrete tasks to start>
+
+## File/path quick-reference
+- <any non-obvious file locations worth noting>
+```
+
+Keep entries concise — bullet points only, no prose paragraphs. Overwrite the whole file each time rather than appending.
+
+**Docs to update alongside memory.md:**
+- `README.md` — keep the API reference, feature list, and any changed endpoints/config in sync
+- `frontend/src/pages/HelpPage.tsx` — update user-facing help text for any new or changed UI features
+
+Both files should be updated in the same commit as the feature work, not as a separate follow-up.
+
+---
+
 ## Phase 1: Project Setup & Infrastructure (Foundation)
 
 ### 1.1 Project Initialization
@@ -93,6 +131,8 @@ choices/
 - `Project` - name, owner (FK to User), created_at
 - `ChoiceList` - name, project (FK), description, created_at
 - `Choice` - value, label, choice_list (FK), order
+- *(Phase 6 additions: `Project.is_public`, `Project.updated_at`, `ChoiceList.updated_at`, `ProjectShare`)*
+- *(Phase 7 additions: `Collection`, `CollectionProject`, `CollectionShare`)*
 
 **Key constraints:**
 - Unique constraint: (project, name) for ChoiceList
@@ -104,6 +144,9 @@ choices/
 - [x] Define Choice model
 - [x] Register all models in api/admin.py (Django admin handles CRUD)
 - [x] Run: `python manage.py makemigrations && python manage.py migrate`
+- [ ] Update `README.md` (data models section)
+- [ ] Update `HelpPage.tsx` if any user-visible concepts changed
+- [ ] Update `memory.md` with current project state (see §0)
 
 ---
 
@@ -200,6 +243,9 @@ shortuuid>=1.0.0
 - [x] Create function-based views for CSV and KoboToolbox endpoints
 - [x] Implement JSON body parsing and validation
 - [x] Handle missing/invalid JSON gracefully
+- [ ] Update `README.md` (API reference — KoboToolbox endpoints + management endpoints)
+- [ ] Update `HelpPage.tsx` (KoboToolbox integration section)
+- [ ] Update `memory.md` with current project state (see §0)
 
 **Django REST Framework handles (out of box):**
 - ✓ JSON serialization
@@ -281,6 +327,10 @@ export const apiClient = {
   deleteChoice: (choiceId: string) => API.delete(`/choices/${choiceId}/`),
 }
 ```
+
+- [ ] Update `README.md` (auth section, frontend setup, environment variables)
+- [ ] Update `HelpPage.tsx` (all new UI pages and features documented)
+- [ ] Update `memory.md` with current project state (see §0)
 
 ---
 
@@ -467,18 +517,25 @@ ngrok http 8000
 # https://abc123.ngrok.io/{project_id}/{choice_list_name}.csv
 ```
 
+- [ ] Update `README.md` (development setup, Docker instructions)
+- [ ] Update `HelpPage.tsx` if testing reveals missing user-facing documentation
+- [ ] Update `memory.md` with current project state (see §0)
+
 ---
 
-## Phase 6: Production Deployment (Later)
+## Stage 2 — Phases 6, 7, 8
 
-**Defer to Phase 2 of project:**
-- [ ] Nginx reverse proxy setup
-- [ ] Let's Encrypt HTTPS
-- [ ] PostgreSQL database (migrate from SQLite)
-- [ ] Production server setup
-- [ ] Health checks & monitoring
-- [ ] Error logging (Sentry)
-- [ ] Automated testing & CI/CD
+The remaining phases are tracked in [`plan-stage2.md`](plan-stage2.md):
+
+| Phase | Title |
+|-------|-------|
+| Phase 6 | Access Control, Project Sharing & Public Projects |
+| Phase 7 | Collections |
+| Phase 8 | Production Deployment |
+
+Start there once Phase 5 is complete. Read this file (`plan.md`) first for project overview, URL conventions, and the `§0 memory.md` update convention.
+
+<!-- Original phases 6-8 moved to plan-stage2.md -->
 
 ---
 

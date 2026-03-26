@@ -11,8 +11,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.authentication import BasicAuthentication, SessionAuthentication
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.exceptions import PermissionDenied
+from .permissions import IsProjectWriteAuthorized
 from rest_framework.parsers import JSONParser, BaseParser
 from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.models import User
 from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
@@ -26,10 +29,11 @@ class PlainTextJSONParser(BaseParser):
     def parse(self, stream, media_type=None, parser_context=None):
         return json.loads(stream.read().decode('utf-8'))
 
-from django.db.models import Prefetch
-from .models import Project, ChoiceList, Choice, ChoiceListColumn, ChoiceExtraValue
+from django.db.models import Prefetch, Q
+from .models import Project, ChoiceList, Choice, ChoiceListColumn, ChoiceExtraValue, ProjectShare
 from .serializers import (
     ProjectSerializer,
+    PublicProjectSerializer,
     ChoiceListSerializer,
     ChoiceListDetailSerializer,
     ChoiceSerializer,
@@ -96,10 +100,64 @@ class ProjectViewSet(viewsets.ModelViewSet):
     lookup_field = 'slug'
 
     def get_queryset(self):
-        return Project.objects.filter(owner=self.request.user)
+        user = self.request.user
+        return Project.objects.filter(
+            Q(owner=user) | Q(shares__user=user)
+        ).distinct()
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        # Only owners may change is_public
+        if 'is_public' in request.data and instance.owner != request.user:
+            raise PermissionDenied("Only the project owner can change is_public.")
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.owner != request.user:
+            raise PermissionDenied("Only the project owner can delete this project.")
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=['get'], url_path='shares')
+    def shares(self, request, slug=None):
+        project = self.get_object()
+        if project.owner != request.user:
+            raise PermissionDenied("Only the project owner can view shares.")
+        share_list = project.shares.select_related('user').order_by('created_at')
+        data = [{'username': s.user.username, 'created_at': s.created_at} for s in share_list]
+        return Response(data)
+
+    @action(detail=True, methods=['post'], url_path='share')
+    def share(self, request, slug=None):
+        project = self.get_object()
+        if project.owner != request.user:
+            raise PermissionDenied("Only the project owner can share this project.")
+        username = (request.data.get('username') or '').strip()
+        if not username:
+            return Response({'error': 'username is required'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            user = User.objects.get(username=username)
+        except User.DoesNotExist:
+            return Response({'error': f'User "{username}" not found'}, status=status.HTTP_400_BAD_REQUEST)
+        if user == project.owner:
+            return Response({'error': 'Cannot share a project with its own owner'}, status=status.HTTP_400_BAD_REQUEST)
+        _, created = ProjectShare.objects.get_or_create(project=project, user=user)
+        if not created:
+            return Response({'error': f'Project is already shared with "{username}"'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'username': username}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['delete'], url_path='share/(?P<username>[^/.]+)')
+    def unshare(self, request, slug=None, username=None):
+        project = self.get_object()
+        if project.owner != request.user:
+            raise PermissionDenied("Only the project owner can remove shares.")
+        deleted, _ = ProjectShare.objects.filter(project=project, user__username=username).delete()
+        if not deleted:
+            return Response({'error': f'No share found for "{username}"'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class ChoiceListViewSet(viewsets.ModelViewSet):
@@ -115,7 +173,10 @@ class ChoiceListViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         from django.db.models import Count
-        qs = ChoiceList.objects.filter(project__owner=self.request.user)
+        user = self.request.user
+        qs = ChoiceList.objects.filter(
+            Q(project__owner=user) | Q(project__shares__user=user)
+        ).distinct()
         # Optional slug-based filtering for list lookups
         project_slug = self.request.query_params.get('project_slug')
         slug = self.request.query_params.get('slug')
@@ -354,8 +415,9 @@ class ChoiceViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return Choice.objects.filter(
-            choice_list__project__owner=self.request.user
-        ).prefetch_related('extra_values')
+            Q(choice_list__project__owner=self.request.user) |
+            Q(choice_list__project__shares__user=self.request.user)
+        ).distinct().prefetch_related('extra_values')
 
     @action(detail=True, methods=['patch'], url_path='set_extra_value')
     def set_extra_value(self, request, pk=None):
@@ -428,9 +490,18 @@ class KoboAddChoiceView(APIView):
     Request format: {"name": "Joshua Beretta"} (key can be any name)
     Response format: {"success": true, "choice_id": "sgdgbs324", ...}
     """
-    authentication_classes = []
-    permission_classes = [AllowAny]
+    authentication_classes = [SessionAuthentication, BasicAuthentication]
+    permission_classes = [IsProjectWriteAuthorized]
     parser_classes = [JSONParser, PlainTextJSONParser]
+
+    def get_choice_list(self):
+        """Used by IsProjectWriteAuthorized to resolve the choice list from URL kwargs."""
+        project = get_object_or_404(
+            Project,
+            slug=self.kwargs['project_id'],
+            owner__username=self.kwargs['username'],
+        )
+        return get_object_or_404(ChoiceList, project=project, slug=self.kwargs['choice_list_name'])
     
     def post(self, request, username, project_id, choice_list_name):
         """
@@ -676,9 +747,18 @@ class KoboRemoveChoiceView(APIView):
     Request format: {"name": "<choice value/id>"} (key can be any name)
     Response format: {"success": true, ...}
     """
-    authentication_classes = []
-    permission_classes = [AllowAny]
+    authentication_classes = [SessionAuthentication, BasicAuthentication]
+    permission_classes = [IsProjectWriteAuthorized]
     parser_classes = [JSONParser, PlainTextJSONParser]
+
+    def get_choice_list(self):
+        """Used by IsProjectWriteAuthorized to resolve the choice list from URL kwargs."""
+        project = get_object_or_404(
+            Project,
+            slug=self.kwargs['project_id'],
+            owner__username=self.kwargs['username'],
+        )
+        return get_object_or_404(ChoiceList, project=project, slug=self.kwargs['choice_list_name'])
 
     def post(self, request, username, project_id, choice_list_name):
         ip = request.META.get('REMOTE_ADDR', '-')
@@ -733,9 +813,18 @@ class KoboDeleteChoiceView(APIView):
     Request format: {"name": "<choice value/id>"} (key can be any name)
     Response format: {"success": true, ...}
     """
-    authentication_classes = []
-    permission_classes = [AllowAny]
+    authentication_classes = [SessionAuthentication, BasicAuthentication]
+    permission_classes = [IsProjectWriteAuthorized]
     parser_classes = [JSONParser, PlainTextJSONParser]
+
+    def get_choice_list(self):
+        """Used by IsProjectWriteAuthorized to resolve the choice list from URL kwargs."""
+        project = get_object_or_404(
+            Project,
+            slug=self.kwargs['project_id'],
+            owner__username=self.kwargs['username'],
+        )
+        return get_object_or_404(ChoiceList, project=project, slug=self.kwargs['choice_list_name'])
 
     def post(self, request, username, project_id, choice_list_name):
         ip = request.META.get('REMOTE_ADDR', '-')
@@ -766,4 +855,33 @@ class KoboDeleteChoiceView(APIView):
         except Exception as e:
             logger.exception('DELETE (hard) error | project=%s list=%s | error=%s', project_id, choice_list_name, e)
             return Response({'success': False, 'message': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class PublicProjectViewSet(viewsets.ReadOnlyModelViewSet):
+    """Read-only viewset for publicly discoverable projects. No authentication required."""
+    serializer_class = None  # set per action
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get_serializer_class(self):
+        from .serializers import PublicProjectSerializer
+        return PublicProjectSerializer
+
+    def get_queryset(self):
+        from django.db.models import Count
+        from django.db.models import Prefetch as DjPrefetch
+        qs = Project.objects.filter(is_public=True).annotate(
+            list_count_annotation=Count('choice_lists')
+        ).prefetch_related(
+            DjPrefetch('choice_lists'),
+            DjPrefetch('choice_lists__columns'),
+            DjPrefetch('choice_lists__choices'),
+            DjPrefetch('choice_lists__choices__extra_values'),
+        )
+        search = self.request.query_params.get('search', '').strip()
+        if search:
+            qs = qs.filter(
+                Q(name__icontains=search) | Q(owner__username__icontains=search)
+            )
+        return qs.order_by('-updated_at')
 

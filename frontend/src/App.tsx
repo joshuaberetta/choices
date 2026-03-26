@@ -5,6 +5,7 @@ import ChoiceListDetailPage from './pages/ChoiceListDetailPage'
 import LoginPage from './pages/LoginPage'
 import ChangePasswordModal from './components/ChangePasswordModal'
 import HelpPage from './pages/HelpPage'
+import PublicProjectDetailPage from './pages/PublicProjectDetailPage'
 import { useAuthStore } from './store/authStore'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -64,6 +65,7 @@ export default function App() {
         <main className="max-w-5xl mx-auto px-6 py-8">
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/public/projects/:id" element={<PublicProjectDetailPage />} />
             <Route path="/" element={<ProtectedRoute><ChoiceListsPage /></ProtectedRoute>} />
             <Route path="/:projectSlug/:choiceListSlug" element={<ProtectedRoute><ChoiceListDetailPage /></ProtectedRoute>} />
             <Route path="/help" element={<HelpPage />} />

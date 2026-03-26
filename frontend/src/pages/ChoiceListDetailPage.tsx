@@ -262,7 +262,7 @@ export default function ChoiceListDetailPage() {
   const [labelColumnError, setLabelColumnError] = useState<string | null>(null)
 
   // Name generation settings
-  const [nameGeneration, setNameGeneration] = useState<'uuid' | 'from_label'>('uuid')
+  const [nameGeneration, setNameGeneration] = useState<'uuid' | 'from_label'>('from_label')
   const [nameMaxLength, setNameMaxLength] = useState(0)
   const [nameSettingsSaving, setNameSettingsSaving] = useState(false)
   const [nameSettingsError, setNameSettingsError] = useState<string | null>(null)
@@ -274,6 +274,10 @@ export default function ChoiceListDetailPage() {
   const [newColumnName, setNewColumnName] = useState('')
   const [columnError, setColumnError] = useState<string | null>(null)
   const [copiedPath, setCopiedPath] = useState<string | null>(null)
+
+  // require_auth toggle
+  const [requireAuth, setRequireAuth] = useState(true)
+  const [togglingRequireAuth, setTogglingRequireAuth] = useState(false)
 
   useEffect(() => {
     if (choiceList?.choices) {
@@ -290,8 +294,9 @@ export default function ChoiceListDetailPage() {
       setLabelColumnName(choiceList.label_column_name)
     }
     if (choiceList) {
-      setNameGeneration(choiceList.name_generation ?? 'uuid')
+      setNameGeneration(choiceList.name_generation ?? 'from_label')
       setNameMaxLength(choiceList.name_max_length ?? 0)
+      setRequireAuth(choiceList.require_auth ?? true)
     }
   }, [choiceList])
 
@@ -399,6 +404,17 @@ export default function ChoiceListDetailPage() {
       }
     } finally {
       setNameSettingsSaving(false)
+    }
+  }
+
+  const handleToggleRequireAuth = async () => {
+    if (!choiceList) return
+    setTogglingRequireAuth(true)
+    try {
+      await apiClient.updateChoiceList(choiceList.id, { require_auth: !requireAuth })
+      setRequireAuth(v => !v)
+    } finally {
+      setTogglingRequireAuth(false)
     }
   }
 
@@ -599,6 +615,20 @@ export default function ChoiceListDetailPage() {
               {note && <span className="text-indigo-400 text-xs shrink-0">{note}</span>}
             </div>
           ))}
+        </div>
+        <div className="mt-4 pt-4 border-t border-indigo-100">
+          <div className="flex items-center gap-3 mb-2">
+            <button type="button" onClick={handleToggleRequireAuth} disabled={togglingRequireAuth}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${requireAuth ? 'bg-indigo-600' : 'bg-gray-300'}`}>
+              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${requireAuth ? 'translate-x-4' : 'translate-x-0.5'}`} />
+            </button>
+            <span className="text-sm font-medium text-indigo-800">Require authentication for write endpoints</span>
+          </div>
+          {requireAuth ? (
+            <p className="text-xs text-indigo-600 ml-12">Use your username and password (Basic Auth) when configuring the KoboToolbox REST service for the POST endpoints above.</p>
+          ) : (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 ml-12">Anyone with the POST endpoint URLs can add or remove choices without authentication.</p>
+          )}
         </div>
       </div>
 

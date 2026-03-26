@@ -75,11 +75,24 @@ const sections: Section[] = [
     label: 'KoboToolbox Integration',
     subsections: [
       { id: 'kobo-urls', label: 'Webhook URLs' },
+      { id: 'kobo-auth', label: 'Webhook authentication' },
       { id: 'kobo-add', label: 'Add endpoint' },
       { id: 'kobo-remove', label: 'Remove endpoint' },
       { id: 'kobo-csv', label: 'CSV export endpoint' },
       { id: 'kobo-xlsform', label: 'XLSForm setup' },
     ],
+  },
+  {
+    id: 'sharing',
+    label: 'Sharing & Access',
+    subsections: [
+      { id: 'sharing-projects', label: 'Project sharing' },
+      { id: 'sharing-require-auth', label: 'Webhook authentication' },
+    ],
+  },
+  {
+    id: 'public-projects',
+    label: 'Public Projects',
   },
   {
     id: 'account',
@@ -239,15 +252,20 @@ export default function HelpPage() {
             <Code>aQQv2xc99EodN8pB8GZ6Jq</Code>). You can find this in the KoboToolbox project
             URL.
           </Li>
-          <Li>Slugs must be unique across the entire application.</Li>
+          <Li>Slugs must be unique per user account.</Li>
         </Ul>
 
         <Heading3 id="projects-edit">Editing &amp; deleting</Heading3>
         <P>
-          Hover over a project row to reveal <strong>Edit</strong> and <strong>Delete</strong>{' '}
-          buttons. Editing opens an inline form; deleting requires a confirmation click to
-          prevent accidents. Deleting a project permanently removes all its choice lists and
-          choices.
+          Hover over a project row to reveal <strong>Edit</strong>, <strong>Settings</strong>,
+          and <strong>Delete</strong> buttons (owner only). Editing opens an inline form;
+          deleting requires a confirmation click to prevent accidents. Deleting a project
+          permanently removes all its choice lists and choices.
+        </P>
+        <P>
+          The <strong>Settings</strong> panel lets you toggle whether the project is public
+          and manage which other users the project is shared with. See{' '}
+          <a href="#sharing" className="text-indigo-600 hover:underline">Sharing &amp; Access</a> for details.
         </P>
 
         {/* ── Choice Lists ── */}
@@ -466,9 +484,9 @@ ghi789,Ahmed Al-Hassan`}</Pre>
                 <td className="px-4 py-2 text-gray-700">Random 9-character short UUID. Stable and opaque — safe for data where the value doesn't need to be human-readable.</td>
                 <td className="px-4 py-2 font-mono text-gray-500">sgdgbs324</td>
               </tr>
-              <tr className="bg-gray-50/50">
+              <tr>
                 <td className="px-4 py-2 font-mono text-indigo-700">from_label</td>
-                <td className="px-4 py-2 text-gray-700">Derived from the label: lowercased, spaces replaced with <Code>_</Code>, non-alphanumeric characters removed, then truncated to the <em>Max length</em> (if set). Collisions get a <Code>_2</Code>, <Code>_3</Code> suffix.</td>
+                <td className="px-4 py-2 text-gray-700">Derived from the label: lowercased, spaces replaced with <Code>_</Code>, non-alphanumeric characters removed, then truncated to the <em>Max length</em> (if set). Collisions get a <Code>_2</Code>, <Code>_3</Code> suffix. <strong>This is the default.</strong></td>
                 <td className="px-4 py-2 font-mono text-gray-500">joshua_beretta</td>
               </tr>
             </tbody>
@@ -502,8 +520,11 @@ ghi789,Ahmed Al-Hassan`}</Pre>
         {/* ── KoboToolbox Integration ── */}
         <Heading2 id="kobo">KoboToolbox Integration</Heading2>
         <P>
-          Choices exposes unauthenticated webhook endpoints that KoboToolbox can call directly.
-          All endpoints are scoped to your username so your data is isolated from other users.
+          Choices exposes webhook endpoints that KoboToolbox can call directly.
+          All endpoints are scoped to your username so your data is isolated.
+          The CSV export endpoint is always public; the write endpoints (<Code>/add</Code>,{' '}
+          <Code>/remove</Code>, <Code>/delete</Code>) require authentication by default — see{' '}
+          <a href="#kobo-auth" className="text-indigo-600 hover:underline">Webhook authentication</a> below.
         </P>
 
         <Heading3 id="kobo-urls">Webhook URLs</Heading3>
@@ -520,6 +541,7 @@ ghi789,Ahmed Al-Hassan`}</Pre>
               <tr>
                 <th className="text-left px-4 py-2 font-semibold text-gray-700 border-b border-gray-200">Method</th>
                 <th className="text-left px-4 py-2 font-semibold text-gray-700 border-b border-gray-200">Path suffix</th>
+                <th className="text-left px-4 py-2 font-semibold text-gray-700 border-b border-gray-200">Auth</th>
                 <th className="text-left px-4 py-2 font-semibold text-gray-700 border-b border-gray-200">Purpose</th>
               </tr>
             </thead>
@@ -527,26 +549,49 @@ ghi789,Ahmed Al-Hassan`}</Pre>
               <tr>
                 <td className="px-4 py-2 font-mono text-green-700">GET</td>
                 <td className="px-4 py-2 font-mono text-gray-600">/export/choices.csv</td>
+                <td className="px-4 py-2 text-gray-500">Never</td>
                 <td className="px-4 py-2 text-gray-700">Download the list as CSV (use as KoboToolbox external choices URL)</td>
               </tr>
               <tr className="bg-gray-50/50">
                 <td className="px-4 py-2 font-mono text-blue-700">POST</td>
                 <td className="px-4 py-2 font-mono text-gray-600">/add</td>
+                <td className="px-4 py-2 text-gray-500">If require_auth</td>
                 <td className="px-4 py-2 text-gray-700">Add a new choice (or re-activate a removed one)</td>
               </tr>
               <tr>
                 <td className="px-4 py-2 font-mono text-amber-700">POST</td>
                 <td className="px-4 py-2 font-mono text-gray-600">/remove</td>
+                <td className="px-4 py-2 text-gray-500">If require_auth</td>
                 <td className="px-4 py-2 text-gray-700">Soft-delete a choice (set <Code>removed=true</Code>)</td>
               </tr>
               <tr className="bg-gray-50/50">
                 <td className="px-4 py-2 font-mono text-red-700">POST</td>
                 <td className="px-4 py-2 font-mono text-gray-600">/delete</td>
+                <td className="px-4 py-2 text-gray-500">If require_auth</td>
                 <td className="px-4 py-2 text-gray-700">Permanently hard-delete a choice</td>
               </tr>
             </tbody>
           </table>
         </div>
+
+        <Heading3 id="kobo-auth">Webhook authentication</Heading3>
+        <P>
+          Each choice list has a <strong>Require authentication</strong> toggle in the
+          KoboToolbox Integration panel. When enabled (the default), the{' '}
+          <Code>/add</Code>, <Code>/remove</Code>, and <Code>/delete</Code> endpoints require{' '}
+          <strong>HTTP Basic Authentication</strong>. Use your Choices username and password
+          when configuring the KoboToolbox REST service.
+        </P>
+        <P>
+          Authentication is accepted for the project owner and any users the project has been{' '}
+          <a href="#sharing-projects" className="text-indigo-600 hover:underline">shared with</a>.
+          The CSV export endpoint is always public regardless of this setting.
+        </P>
+        <Warn>
+          Disabling authentication means anyone who knows the endpoint URL can add or remove
+          choices without credentials. Only disable this if your KoboToolbox deployment cannot
+          send Basic Auth headers.
+        </Warn>
 
         <Heading3 id="kobo-add">Add endpoint</Heading3>
         <P>
@@ -622,6 +667,57 @@ Content-Type: application/json
           </Li>
         </Ul>
 
+        {/* ── Sharing & Access ── */}
+        <Heading2 id="sharing">Sharing &amp; Access</Heading2>
+
+        <Heading3 id="sharing-projects">Project sharing</Heading3>
+        <P>
+          Project owners can share a project with other registered users. Open the{' '}
+          <strong>Settings</strong> panel on any project row (owner only), then type a username
+          in the <strong>Sharing</strong> section and click <strong>Share</strong>.
+        </P>
+        <P>
+          Shared users will see the project in their <strong>My Projects</strong> tab with a
+          &ldquo;Shared by&rdquo; badge. They can view and edit choice lists and add/remove choices
+          via the webhooks, but they cannot change the project&rsquo;s public visibility or delete the
+          project.
+        </P>
+        <P>
+          To revoke access, open the Settings panel and click <strong>Remove</strong> next to
+          the user&rsquo;s name.
+        </P>
+
+        <Heading3 id="sharing-require-auth">Webhook authentication (require_auth)</Heading3>
+        <P>
+          Each choice list has a <strong>Require authentication</strong> toggle in the
+          KoboToolbox Integration panel. When enabled (the default), the <Code>/add</Code>,{' '}
+          <Code>/remove</Code>, and <Code>/delete</Code> endpoints require HTTP Basic
+          Authentication using your Choices credentials. Authentication is accepted for the
+          project owner and all shared users.
+        </P>
+        <Note>
+          The CSV export endpoint is always public regardless of the <Code>require_auth</Code> setting.
+        </Note>
+
+        {/* ── Public Projects ── */}
+        <Heading2 id="public-projects">Public Projects</Heading2>
+        <P>
+          Any project can be made <strong>public</strong> by its owner. Open the{' '}
+          <strong>Settings</strong> panel on the project row and toggle{' '}
+          <strong>Make this project public</strong>.
+        </P>
+        <P>
+          Public projects appear in the <strong>Public Projects</strong> tab and are browsable
+          by anyone — including users who are not logged in. Each public project&rsquo;s detail page
+          shows all its choice lists and their active (non-removed) choices, plus a{' '}
+          <strong>Copy CSV URL</strong> button for each list.
+        </P>
+        <Note>
+          Making a project public does not affect authentication on the write endpoints.
+          If <Code>require_auth</Code> is enabled, callers still need credentials to add or
+          remove choices even when the project is public.
+        </Note>
+
         {/* ── Account ── */}
         <Heading2 id="account">Your Account</Heading2>
         <P>
@@ -638,8 +734,9 @@ Content-Type: application/json
           be terminated and you will be redirected to the login page.
         </P>
         <Note>
-          All your data (projects, lists, choices) belongs to your account. Other users cannot
-          see or modify it.
+          All your data (projects, lists, choices) belongs to your account. Projects shared
+          with you by other owners are also visible and editable, but you cannot delete them
+          or change their public visibility.
         </Note>
 
         <div className="mt-12 pt-6 border-t border-gray-200 text-sm text-gray-400">

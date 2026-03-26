@@ -16,6 +16,7 @@ A web service that integrates into [KoboToolbox](https://www.kobotoolbox.org/) w
   - [Management REST API](#management-rest-api)
   - [Authentication API](#authentication-api)
 - [Features](#features)
+- [Access Control & Sharing](#access-control--sharing)
 - [Development Setup](#development-setup)
 - [Production Deployment](#production-deployment)
 - [Environment Variables](#environment-variables)
@@ -68,10 +69,15 @@ The frontend is a React SPA bundled by Vite and served as static files by Nginx.
 
 ```
 Project
-├── slug              (unique, e.g. "aQQv2xc99EodN8pB8GZ6Jq" — matches KoboToolbox project ID)
+├── slug              (unique per owner, e.g. "aQQv2xc99EodN8pB8GZ6Jq" — matches KoboToolbox project ID)
 ├── name
 ├── description
+├── is_public         (bool; if true, project appears in the public discovery feed)
 └── owner             (FK → User)
+
+ProjectShare          (grants a non-owner user write access to a project)
+├── project           (FK → Project)
+└── user              (FK → User)
 
 ChoiceList
 ├── project           (FK → Project)
@@ -79,8 +85,9 @@ ChoiceList
 ├── name
 ├── description
 ├── label_column_name (CSV export header for label; default "label"; e.g. "label::English (en)")
-├── name_generation   ("uuid" | "from_label"; controls how choice values are auto-generated)
-└── name_max_length   (max length for from_label names; 0 = no limit)
+├── name_generation   ("uuid" | "from_label"; default "from_label"; controls how choice values are auto-generated)
+├── name_max_length   (max length for from_label names; 0 = no limit)
+└── require_auth      (bool; if true, /add /remove /delete require HTTP Basic Auth)
 
 ChoiceListColumn      (extra named columns attached to a ChoiceList)
 ├── choice_list       (FK → ChoiceList)
@@ -110,15 +117,16 @@ Choice
 
 ### KoboToolbox Integration Endpoints
 
-These endpoints require no authentication and are called directly by KoboToolbox.
 All URLs are scoped to a **username** so each user's projects are isolated.
 
-| Method | URL | Description |
-|--------|-----|-------------|
-| `GET` | `/{username}/{project_id}/{list_name}/export/{filename}.csv` | Download choice list as CSV |
-| `POST` | `/{username}/{project_id}/{list_name}/add` | Add a choice (idempotent; re-activates soft-deleted choices) |
-| `POST` | `/{username}/{project_id}/{list_name}/remove` | Soft-delete a choice by value/ID |
-| `POST` | `/{username}/{project_id}/{list_name}/delete` | Hard-delete a choice by value/ID |
+| Method | URL | Auth required | Description |
+|--------|-----|---------------|-------------|
+| `GET` | `/{username}/{project_id}/{list_name}/export/{filename}.csv` | Never | Download choice list as CSV |
+| `POST` | `/{username}/{project_id}/{list_name}/add` | If `require_auth=true` | Add a choice (idempotent; re-activates soft-deleted choices) |
+| `POST` | `/{username}/{project_id}/{list_name}/remove` | If `require_auth=true` | Soft-delete a choice by value/ID |
+| `POST` | `/{username}/{project_id}/{list_name}/delete` | If `require_auth=true` | Hard-delete a choice by value/ID |
+
+**Authentication for write endpoints:** When `require_auth` is enabled on a choice list (the default), the `/add`, `/remove`, and `/delete` endpoints require HTTP Basic Authentication. The credentials must be those of the project owner or a user the project has been shared with. The CSV export endpoint is always public regardless of this setting.
 
 **CSV export** includes all extra columns (including system columns). The label header respects the `label_column_name` setting on the choice list.
 
@@ -163,11 +171,18 @@ Base path: `/api/` — requires session authentication (see [Authentication API]
 
 | Method | URL | Description |
 |--------|-----|-------------|
-| `GET` | `/api/projects/` | List all projects |
+| `GET` | `/api/projects/` | List all owned + shared projects |
 | `POST` | `/api/projects/` | Create a project |
-| `GET` | `/api/projects/{slug}/` | Get a project |
-| `PATCH` | `/api/projects/{slug}/` | Update a project |
-| `DELETE` | `/api/projects/{slug}/` | Delete a project |
+| `GET` | `/api/projects/{slug}/` | Get a project (owner or shared) |
+| `PATCH` | `/api/projects/{slug}/` | Update a project (owner only for `is_public`) |
+| `DELETE` | `/api/projects/{slug}/` | Delete a project (owner only) |
+| `GET` | `/api/projects/{slug}/shares/` | List users this project is shared with |
+| `POST` | `/api/projects/{slug}/share/` | Share with a user: `{username}` |
+| `POST` | `/api/projects/{slug}/unshare/` | Remove a share: `{username}` |
+| `GET` | `/api/projects/public/` | Public project discovery (no auth; supports `?search=`) |
+| `GET` | `/api/projects/public/{id}/` | Get a public project with its choice lists and choices (no auth) |
+
+Project responses include a `role` field (`"owner"` or `"shared"`) and `owner_username`.
 
 #### Choice Lists
 
@@ -240,8 +255,8 @@ Each choice list has a `name_generation` setting that controls how the XLSForm `
 
 | Mode | Behaviour |
 |------|-----------|
-| `uuid` (default) | Random 9-character short UUID (e.g. `sgdgbs324`) |
-| `from_label` | Derived from the label: lowercased, spaces → `_`, non-alphanumeric characters stripped, then truncated to `name_max_length` (if set). Uniqueness is guaranteed with a `_2`, `_3` suffix. |
+| `from_label` (default) | Derived from the label: lowercased, spaces → `_`, non-alphanumeric characters stripped, then truncated to `name_max_length` (if set). Uniqueness is guaranteed with a `_2`, `_3` suffix. |
+| `uuid` | Random 9-character short UUID (e.g. `sgdgbs324`) |
 
 ### System columns
 
@@ -273,6 +288,30 @@ Choices can be reordered by dragging rows. Sorting by label or value persists th
 ### Configurable label column name
 
 The CSV `label` header can be customised per list (e.g. `label::English (en)` for XLSForm multi-language forms). This affects both the management export and the KoboToolbox CSV export.
+
+---
+
+## Access Control & Sharing
+
+### Project sharing
+
+A project owner can share a project with other registered users. Shared users gain the same write access to choice lists and Kobo webhook endpoints as the owner, but cannot change the project's `is_public` flag or delete the project.
+
+Sharing is managed from the **Settings** panel on the Projects page (owner only). The API endpoints are:
+
+- `GET /api/projects/{slug}/shares/` — list current shares
+- `POST /api/projects/{slug}/share/` — add a share: `{"username": "..."}`
+- `POST /api/projects/{slug}/unshare/` — remove a share: `{"username": "..."}`
+
+### Webhook authentication (`require_auth`)
+
+Each choice list has a `require_auth` toggle (default: `true`). When enabled, the `/add`, `/remove`, and `/delete` webhook endpoints require HTTP Basic Authentication with valid credentials for the project owner or a shared user. The CSV export endpoint is always unauthenticated.
+
+Disable `require_auth` only if you need KoboToolbox to call the endpoints without credentials (e.g. for legacy workflows). When disabled, anyone who knows the URL can modify the choice list.
+
+### Public projects
+
+Owners can mark a project as **public** via the Settings panel. Public projects appear in the unauthenticated **Public Projects** tab and via `GET /api/projects/public/`. The detail endpoint (`/api/projects/public/{id}/`) returns the project's choice lists and their non-removed choices — useful for read-only embeds or sharing data with collaborators who don't have an account.
 
 ---
 
@@ -442,6 +481,6 @@ python manage.py createsuperuser
 docker compose exec backend python manage.py createsuperuser
 ```
 
-From the admin you can manage Projects, Choice Lists, Choices, Columns, and Users.
+From the admin you can manage Projects, Choice Lists, Choices, Columns, Project Shares, and Users.
 
-> **User management:** There is no public signup. All users must be created via the Django admin. Each user sees only their own projects and choice lists. Assign `owner` on any existing projects with a `NULL` owner via the admin after creating a user account.
+> **User management:** There is no public signup. All users must be created via the Django admin. Each user sees their own projects plus any projects shared with them. Assign `owner` on any existing projects with a `NULL` owner via the admin after creating a user account.

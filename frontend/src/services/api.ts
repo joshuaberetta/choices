@@ -34,9 +34,43 @@ export interface Project {
   name: string;
   description: string;
   owner: number | null;
+  owner_username: string | null;
+  is_public: boolean;
+  role: 'owner' | 'shared';
   created_at: string;
   updated_at: string;
   choice_lists?: ChoiceList[];
+}
+
+export interface PublicProject {
+  id: number;
+  slug: string;
+  name: string;
+  description: string;
+  owner_username: string;
+  list_count: number;
+  updated_at: string;
+  choice_lists?: PublicChoiceList[];
+}
+
+export interface PublicChoice {
+  value: string;
+  label: string;
+  order: number;
+}
+
+export interface PublicChoiceList {
+  id: number;
+  slug: string;
+  name: string;
+  description: string;
+  updated_at: string;
+  choices: PublicChoice[];
+}
+
+export interface ProjectShare {
+  username: string;
+  created_at: string;
 }
 
 export interface ChoiceList {
@@ -50,6 +84,7 @@ export interface ChoiceList {
   label_column_name: string;
   name_generation: 'uuid' | 'from_label';
   name_max_length: number;
+  require_auth: boolean;
   created_at: string;
   updated_at: string;
   choices_count: number;
@@ -88,6 +123,18 @@ const apiClient = {
   updateProject: (id: string | number, data: Partial<Project>) =>
     API.patch<Project>(`/projects/${id}/`, data),
   deleteProject: (id: string | number) => API.delete(`/projects/${id}/`),
+
+  // Project sharing
+  getProjectShares: (slug: string) => API.get<ProjectShare[]>(`/projects/${slug}/shares/`),
+  shareProject: (slug: string, username: string) =>
+    API.post<{ username: string }>(`/projects/${slug}/share/`, { username }),
+  removeProjectShare: (slug: string, username: string) =>
+    API.delete(`/projects/${slug}/share/${username}/`),
+
+  // Public projects
+  getPublicProjects: (search?: string) =>
+    API.get<PaginatedResponse<PublicProject>>('/projects/public/', { params: search ? { search } : {} }),
+  getPublicProject: (id: string | number) => API.get<PublicProject>(`/projects/public/${id}/`),
 
   // Choice Lists
   getChoiceLists: () => API.get<PaginatedResponse<ChoiceList>>('/choice-lists/'),
