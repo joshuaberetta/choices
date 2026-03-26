@@ -234,40 +234,40 @@ updateProject:     (id: string, data: Partial<Project>) =>
 ### 6.8 Implementation Checklist
 
 **Backend:**
-- [ ] Add `is_public` field to `Project` model (`updated_at` already exists)
-- [ ] Add `require_auth` (default `True`) field to `ChoiceList` model (`updated_at` already exists)
-- [ ] Create `ProjectShare` model (`project` FK, `user` FK, `unique_together`)
-- [ ] Run `python manage.py makemigrations && python manage.py migrate`
-- [ ] Create `api/permissions.py` with `IsProjectWriteAuthorized` (checks `require_auth` first, then owner/share membership)
-- [ ] Add `get_choice_list()` method to `KoboAddChoiceView`, `KoboRemoveChoiceView`, and `KoboDeleteChoiceView` (see §6.5 for implementation)
-- [ ] Update `KoboAddChoiceView`, `KoboRemoveChoiceView`, and `KoboDeleteChoiceView` to use `authentication_classes = [SessionAuthentication, BasicAuthentication]` and `permission_classes = [IsProjectWriteAuthorized]`
-- [ ] Confirm `KoboCSVExportView` keeps `authentication_classes=[]` and `permission_classes=[AllowAny]` — do NOT change global `DEFAULT_AUTHENTICATION_CLASSES`
-- [ ] Expand `ProjectViewSet` queryset: `owner=user` **union** `shares__user=user` (use `.distinct()`)
-- [ ] Add computed `role` field (`"owner"` / `"shared"`) to `ProjectSerializer`
-- [ ] Add `owner_username`, `updated_at`, `list_count` to serializer for public endpoints
-- [ ] Add `is_public` to `ProjectSerializer` (read/write for owner; read-only for shared users — enforce in `update()`)
-- [ ] Add `require_auth` to `ChoiceListSerializer` (writable by owner or shared user; `updated_at` already in serializer)
-- [ ] Implement share management actions on `ProjectViewSet`: `shares`, `share`, `unshare` (router actions)
-- [ ] Implement `PublicProjectViewSet` (read-only, `AllowAny`, supports `?search=`); register its URL **before** `include(router.urls)` in `api/urls.py` so that `/api/projects/public/` takes precedence over the `{slug}` pattern (or use a separate prefix like `/api/public/projects/`)
-- [ ] Register new routes in `api/urls.py`
-- [ ] Update `ChoiceListViewSet` and `ChoiceViewSet` querysets to include shared-project data
-- [ ] Add owner-only guard for `is_public`, `share`, `unshare` actions (raise `PermissionDenied` for shared users)
+- [x] Add `is_public` field to `Project` model (`updated_at` already exists)
+- [x] Add `require_auth` (default `True`) field to `ChoiceList` model (`updated_at` already exists)
+- [x] Create `ProjectShare` model (`project` FK, `user` FK, `unique_together`)
+- [x] Run `python manage.py makemigrations && python manage.py migrate`
+- [x] Create `api/permissions.py` with `IsProjectWriteAuthorized` (checks `require_auth` first, then owner/share membership)
+- [x] Add `get_choice_list()` method to `KoboAddChoiceView`, `KoboRemoveChoiceView`, and `KoboDeleteChoiceView` (see §6.5 for implementation)
+- [x] Update `KoboAddChoiceView`, `KoboRemoveChoiceView`, and `KoboDeleteChoiceView` to use `authentication_classes = [SessionAuthentication, BasicAuthentication]` and `permission_classes = [IsProjectWriteAuthorized]`
+- [x] Confirm `KoboCSVExportView` keeps `authentication_classes=[]` and `permission_classes=[AllowAny]` — do NOT change global `DEFAULT_AUTHENTICATION_CLASSES`
+- [x] Expand `ProjectViewSet` queryset: `owner=user` **union** `shares__user=user` (use `.distinct()`)
+- [x] Add computed `role` field (`"owner"` / `"shared"`) to `ProjectSerializer`
+- [x] Add `owner_username`, `updated_at`, `list_count` to serializer for public endpoints
+- [x] Add `is_public` to `ProjectSerializer` (read/write for owner; read-only for shared users — enforce in `update()`)
+- [x] Add `require_auth` to `ChoiceListSerializer` (writable by owner or shared user; `updated_at` already in serializer)
+- [x] Implement share management actions on `ProjectViewSet`: `shares`, `share`, `unshare` (router actions)
+- [x] Implement `PublicProjectViewSet` (read-only, `AllowAny`, supports `?search=`); register its URL **before** `include(router.urls)` in `api/urls.py` so that `/api/projects/public/` takes precedence over the `{slug}` pattern (or use a separate prefix like `/api/public/projects/`)
+- [x] Register new routes in `api/urls.py`
+- [x] Update `ChoiceListViewSet` and `ChoiceViewSet` querysets to include shared-project data
+- [x] Add owner-only guard for `is_public`, `share`, `unshare` actions (raise `PermissionDenied` for shared users)
 
 **Frontend:**
-- [ ] Refactor `ChoiceListsPage` into "My Projects" / "Public Projects" tab layout
-- [ ] Build `PublicProjectsPage` component: search bar, project cards with owner + `updated_at` + list count
-- [ ] Build `PublicProjectDetailPage`: read-only list of choice lists + CSV copy-link per list
-- [ ] Add project settings panel/modal: `is_public` toggle + share management section (add by username, list current shares, remove button)
-- [ ] Show "Shared by [owner_username]" badge on shared projects in My Projects tab
-- [ ] Conditionally hide owner-only controls (delete project, settings, share management) based on `role`
-- [ ] Update `apiClient` in `api.ts` with new methods (see §6.6)
-- [ ] Add "Require authentication for write endpoints" toggle to Kobo integration panel in `ChoiceListDetailPage` (owner/shared user only; defaults to on)
-- [ ] Show inline security warning when `require_auth` is toggled off
-- [ ] Conditionally show/hide Basic Auth credential instructions in Kobo integration panel based on `require_auth`
-- [ ] Update `useChoiceLists` hook or add `useProjects` hook to surface `role` and shared-project data
-- [ ] Update `README.md` (auth model, sharing, public projects, Basic Auth for KoboToolbox)
-- [ ] Update `HelpPage.tsx` (sharing section, public projects section, Basic Auth credentials note)
-- [ ] Update `memory.md` with current project state (see §0 in `plan.md`)
+- [x] Refactor `ChoiceListsPage` into "My Projects" / "Public Projects" tab layout
+- [x] Build `PublicProjectsPage` component: search bar, project cards with owner + `updated_at` + list count
+- [x] Build `PublicProjectDetailPage`: read-only list of choice lists + CSV copy-link per list
+- [x] Add project settings panel/modal: `is_public` toggle + share management section (add by username, list current shares, remove button)
+- [x] Show "Shared by [owner_username]" badge on shared projects in My Projects tab
+- [x] Conditionally hide owner-only controls (delete project, settings, share management) based on `role`
+- [x] Update `apiClient` in `api.ts` with new methods (see §6.6)
+- [x] Add "Require authentication for write endpoints" toggle to Kobo integration panel in `ChoiceListDetailPage` (owner/shared user only; defaults to on)
+- [x] Show inline security warning when `require_auth` is toggled off
+- [x] Conditionally show/hide Basic Auth credential instructions in Kobo integration panel based on `require_auth`
+- [x] Update `useChoiceLists` hook or add `useProjects` hook to surface `role` and shared-project data
+- [x] Update `README.md` (auth model, sharing, public projects, Basic Auth for KoboToolbox)
+- [x] Update `HelpPage.tsx` (sharing section, public projects section, Basic Auth credentials note)
+- [x] Update `memory.md` with current project state (see §0 in `plan.md`)
 
 ---
 
@@ -444,28 +444,28 @@ removeCollectionShare:       (id, username)       => API.delete(`/collections/${
 ### 7.7 Implementation Checklist
 
 **Backend:**
-- [ ] Create `Collection`, `CollectionProject`, `CollectionShare` models
-- [ ] Run `python manage.py makemigrations && python manage.py migrate`
-- [ ] Register models in `api/admin.py`
-- [ ] Create `IsCollectionWriteAuthorized` permission (owner or `CollectionShare` member)
-- [ ] Implement `CollectionViewSet` with `add_project`, `remove_project`, `shares`, `share`, `unshare` actions
-- [ ] Implement `PublicCollectionViewSet` (read-only, `AllowAny`, `?search=`)
-- [ ] Register routes in `api/urls.py`
-- [ ] Add `role`, `owner_username`, `project_count`, `updated_at` to `CollectionSerializer`
-- [ ] Add collection membership list (id, name, slug) to `ProjectSerializer`
-- [ ] Guard `is_public`, delete, share/unshare as owner-only (raise `PermissionDenied` for shared users)
+- [x] Create `Collection`, `CollectionProject`, `CollectionShare` models
+- [x] Run `python manage.py makemigrations && python manage.py migrate`
+- [x] Register models in `api/admin.py`
+- [x] Create `IsCollectionWriteAuthorized` permission (owner or `CollectionShare` member)
+- [x] Implement `CollectionViewSet` with `add_project`, `remove_project`, `shares`, `share`, `unshare` actions
+- [x] Implement `PublicCollectionViewSet` (read-only, `AllowAny`, `?search=`)
+- [x] Register routes in `api/urls.py`
+- [x] Add `role`, `owner_username`, `project_count`, `updated_at` to `CollectionSerializer`
+- [x] Add collection membership list (id, name, slug) to `ProjectSerializer`
+- [x] Guard `is_public`, delete, share/unshare as owner-only (raise `PermissionDenied` for shared users)
 
 **Frontend:**
-- [ ] Add "Collections" entry to main navigation
-- [ ] Build `MyCollectionsPage` (`/collections`): list owned + shared, create button
-- [ ] Build `CollectionDetailPage` (`/collections/{id}`): project list, add/remove project, settings panel
-- [ ] Build `PublicCollectionsPage` (`/collections/public`): search + cards
-- [ ] Build `PublicCollectionDetailPage` (`/collections/public/{id}`): read-only + CSV links
-- [ ] Add collection membership chips to `ChoiceListsPage` project rows (or project detail header)
-- [ ] Update `apiClient` in `api.ts` with collection methods (see §7.5)
-- [ ] Update `README.md` (data model, collections API, navigation changes)
-- [ ] Update `HelpPage.tsx` (collections section, use-case example with pcodes hierarchy)
-- [ ] Update `memory.md` with current project state (see §0 in `plan.md`)
+- [x] Add "Collections" entry to main navigation
+- [x] Build `MyCollectionsPage` (`/collections`): list owned + shared, create button
+- [x] Build `CollectionDetailPage` (`/collections/{id}`): project list, add/remove project, settings panel
+- [x] Build `PublicCollectionsPage` (`/collections/public`): search + cards
+- [x] Build `PublicCollectionDetailPage` (`/collections/public/{id}`): read-only + CSV links
+- [x] Add collection membership chips to `ChoiceListsPage` project rows (or project detail header)
+- [x] Update `apiClient` in `api.ts` with collection methods (see §7.5)
+- [x] Update `README.md` (data model, collections API, navigation changes)
+- [x] Update `HelpPage.tsx` (collections section, use-case example with pcodes hierarchy)
+- [x] Update `memory.md` with current project state (see §0 in `plan.md`)
 
 ---
 
