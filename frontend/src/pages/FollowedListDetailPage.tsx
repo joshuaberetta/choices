@@ -64,7 +64,7 @@ function EditableCell({
 export default function FollowedListDetailPage() {
   const { configId } = useParams<{ configId: string }>()
   const navigate = useNavigate()
-  const { config, setConfig, loading, error, refetch } = useFollowedList(Number(configId))
+  const { config, setConfig, loading, error } = useFollowedList(Number(configId))
 
   const [choices, setChoices] = useState<FollowedChoice[]>([])
   const [choicesLoading, setChoicesLoading] = useState(false)

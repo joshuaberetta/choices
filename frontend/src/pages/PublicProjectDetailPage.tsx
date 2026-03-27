@@ -91,7 +91,7 @@ export default function PublicProjectDetailPage() {
     if (!project) return
     setFollowingAll(true)
     let followed = 0
-    for (const list of project.choice_lists) {
+    for (const list of project.choice_lists ?? []) {
       if (followedMap[list.id]) continue
       try {
         const res = await apiClient.followList(list.id)
