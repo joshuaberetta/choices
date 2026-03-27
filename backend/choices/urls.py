@@ -16,11 +16,16 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-from api.views import KoboCSVExportView, KoboAddChoiceView, KoboRemoveChoiceView, KoboDeleteChoiceView
+from api.views import KoboCSVExportView, KoboAddChoiceView, KoboRemoveChoiceView, KoboDeleteChoiceView, UserCustomCSVExportView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('api.urls')),  # Management API (DRF ViewSets)
+
+    # Phase 9: Follower custom CSV export — must be before the generic Kobo patterns
+    # so 'custom' is treated as a literal path segment, not a project_id.
+    path('<str:follower_username>/<str:project_slug>/custom/<str:list_slug>.csv',
+         UserCustomCSVExportView.as_view(), name='user-custom-csv-export'),
 
     # KoboToolbox integration endpoints at root level (no /api/ prefix)
     path('<str:username>/<str:project_id>/<str:choice_list_name>/export/<str:filename>.csv', KoboCSVExportView.as_view(), name='kobo-csv-export'),

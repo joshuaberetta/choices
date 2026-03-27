@@ -28,6 +28,16 @@ export default function PublicCollectionDetailPage() {
   const [expandedProjects, setExpandedProjects] = useState<Set<number>>(new Set())
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
 
+  // Follow state: map from choice_list id → config id
+  const [followedMap, setFollowedMap] = useState<Record<number, number>>({})
+  const [followingId, setFollowingId] = useState<number | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+
+  const showToast = (msg: string) => {
+    setToast(msg)
+    setTimeout(() => setToast(null), 2500)
+  }
+
   // Fetch collection metadata
   useEffect(() => {
     if (!id) return
@@ -36,6 +46,16 @@ export default function PublicCollectionDetailPage() {
       .catch(() => setError('Collection not found or not public.'))
       .finally(() => setLoading(false))
   }, [id])
+
+  // Load follow states when user is logged in
+  useEffect(() => {
+    if (!user) return
+    apiClient.getFollowedLists().then(res => {
+      const map: Record<number, number> = {}
+      res.data.results.forEach(cfg => { map[cfg.choice_list] = cfg.id })
+      setFollowedMap(map)
+    }).catch(() => {/* non-critical */})
+  }, [user])
 
   // Fetch a page of projects
   const fetchProjects = useCallback(async (collId: number, p: number, q: string) => {
@@ -80,6 +100,50 @@ export default function PublicCollectionDetailPage() {
     setTimeout(() => setCopiedUrl(c => c === url ? null : c), 1500)
   }
 
+  const handleFollow = async (listId: number) => {
+    setFollowingId(listId)
+    try {
+      const res = await apiClient.followList(listId)
+      setFollowedMap(prev => ({ ...prev, [listId]: res.data.id }))
+      showToast('Added to your Following list.')
+    } catch {
+      showToast('Failed to follow list.')
+    } finally {
+      setFollowingId(null)
+    }
+  }
+
+  const handleUnfollow = async (listId: number) => {
+    const configId = followedMap[listId]
+    if (!configId) return
+    setFollowingId(listId)
+    try {
+      await apiClient.unfollowList(configId)
+      setFollowedMap(prev => { const n = { ...prev }; delete n[listId]; return n })
+      showToast('Unfollowed.')
+    } catch {
+      showToast('Failed to unfollow.')
+    } finally {
+      setFollowingId(null)
+    }
+  }
+
+  const handleFollowAll = async () => {
+    const allLists = projects.flatMap(p => (p.choice_lists ?? []).filter(l => !followedMap[l.id]))
+    if (allLists.length === 0) { showToast('All visible lists are already followed.'); return }
+    let followed = 0
+    for (const list of allLists) {
+      try {
+        const res = await apiClient.followList(list.id)
+        setFollowedMap(prev => ({ ...prev, [list.id]: res.data.id }))
+        followed++
+      } catch {
+        // skip already-followed or permission errors
+      }
+    }
+    showToast(`Followed ${followed} list${followed !== 1 ? 's' : ''}.`)
+  }
+
   if (loading) return <div className="flex items-center justify-center py-16 text-gray-400">Loading…</div>
   if (error || !collection) return (
     <div className="bg-red-50 border border-red-200 rounded-xl p-5 text-red-700 text-sm">
@@ -90,6 +154,11 @@ export default function PublicCollectionDetailPage() {
 
   return (
     <div>
+      {toast && (
+        <div className="fixed top-5 right-5 z-50 bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg shadow-lg">
+          {toast}
+        </div>
+      )}
       <div className="mb-4 text-sm text-gray-500">
         <Link to="/collections/public" className="hover:text-indigo-600">Public Collections</Link>
         <span className="mx-1.5">›</span>
@@ -109,6 +178,22 @@ export default function PublicCollectionDetailPage() {
             </p>
           </div>
           {user && (
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={handleFollowAll}
+                className="text-sm text-indigo-600 hover:text-indigo-800 px-3 py-1.5 rounded-lg border border-indigo-200 hover:border-indigo-300 transition-colors"
+              >
+                Follow all lists
+              </button>
+              <Link
+                to="/collections"
+                className="text-sm text-indigo-600 hover:text-indigo-800 px-3 py-1.5 rounded-lg border border-indigo-200 hover:border-indigo-300 transition-colors"
+              >
+                My Collections →
+              </Link>
+            </div>
+          )}
+          {!user && (
             <Link
               to="/collections"
               className="text-sm text-indigo-600 hover:text-indigo-800 px-3 py-1.5 rounded-lg border border-indigo-200 hover:border-indigo-300 transition-colors shrink-0"
@@ -230,16 +315,46 @@ export default function PublicCollectionDetailPage() {
                                     <span className="font-medium text-gray-800 text-sm">{list.name}</span>
                                     {list.description && <p className="text-xs text-gray-400">{list.description}</p>}
                                   </div>
-                                  <button
-                                    onClick={() => copyUrl(csvUrl)}
-                                    className={`text-xs px-2.5 py-1 rounded-lg border transition-colors shrink-0 ${
-                                      copiedUrl === csvUrl
-                                        ? 'bg-green-100 border-green-300 text-green-700'
-                                        : 'border-indigo-200 text-indigo-600 hover:bg-indigo-50'
-                                    }`}
-                                  >
-                                    {copiedUrl === csvUrl ? '✓ Copied' : 'Copy CSV URL'}
-                                  </button>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    {user && (
+                                      followedMap[list.id] ? (
+                                        <div className="flex items-center gap-1">
+                                          <Link
+                                            to={`/following/${followedMap[list.id]}`}
+                                            className="text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 px-2.5 py-1 rounded transition-colors"
+                                          >
+                                            Following ✓
+                                          </Link>
+                                          <button
+                                            onClick={() => handleUnfollow(list.id)}
+                                            disabled={followingId === list.id}
+                                            className="text-xs text-gray-400 hover:text-red-500 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                                            title="Unfollow"
+                                          >
+                                            ✕
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <button
+                                          onClick={() => handleFollow(list.id)}
+                                          disabled={followingId === list.id}
+                                          className="text-xs bg-gray-50 border border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-700 hover:bg-indigo-50 px-2.5 py-1 rounded transition-colors disabled:opacity-50"
+                                        >
+                                          {followingId === list.id ? 'Following…' : 'Follow'}
+                                        </button>
+                                      )
+                                    )}
+                                    <button
+                                      onClick={() => copyUrl(csvUrl)}
+                                      className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${
+                                        copiedUrl === csvUrl
+                                          ? 'bg-green-100 border-green-300 text-green-700'
+                                          : 'border-indigo-200 text-indigo-600 hover:bg-indigo-50'
+                                      }`}
+                                    >
+                                      {copiedUrl === csvUrl ? '✓ Copied' : 'Copy CSV URL'}
+                                    </button>
+                                  </div>
                                 </div>
                                 {choices.length > 0 && (
                                   <div className="mt-1 max-h-40 overflow-y-auto">

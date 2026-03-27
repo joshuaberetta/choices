@@ -147,6 +147,52 @@ class CollectionProject(models.Model):
         return f"{self.collection} → {self.project}"
 
 
+class UserChoiceListConfig(models.Model):
+    """A user's 'follow' record for a public choice list, with optional column customisations."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='followed_lists')
+    choice_list = models.ForeignKey(ChoiceList, on_delete=models.CASCADE, related_name='follower_configs')
+    label_column_name = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text="Overrides the list's label_column_name in exports. Blank = inherit original.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'choice_list')
+
+    def __str__(self):
+        return f"{self.user.username} → {self.choice_list}"
+
+
+class UserChoiceListColumn(models.Model):
+    """An extra column the follower adds on top of the original list's columns."""
+    config = models.ForeignKey(UserChoiceListConfig, on_delete=models.CASCADE, related_name='columns')
+    name = models.CharField(max_length=255)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        unique_together = ('config', 'name')
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return f"{self.name} ({self.config})"
+
+
+class UserChoiceExtraValue(models.Model):
+    """Cell value for a user-added column on a specific choice."""
+    config = models.ForeignKey(UserChoiceListConfig, on_delete=models.CASCADE, related_name='extra_values')
+    choice = models.ForeignKey(Choice, on_delete=models.CASCADE, related_name='user_extra_values')
+    column = models.ForeignKey(UserChoiceListColumn, on_delete=models.CASCADE, related_name='values')
+    value = models.TextField(blank=True, default='')
+
+    class Meta:
+        unique_together = ('config', 'choice', 'column')
+
+    def __str__(self):
+        return f"{self.choice} – {self.column.name}: {self.value}"
+
+
 class CollectionShare(models.Model):
     """Grants a user access to manage a collection they don't own"""
     collection = models.ForeignKey(Collection, on_delete=models.CASCADE, related_name='shares')

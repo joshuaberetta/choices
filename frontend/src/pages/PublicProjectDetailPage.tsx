@@ -12,6 +12,16 @@ export default function PublicProjectDetailPage() {
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null)
   const [expandedLists, setExpandedLists] = useState<Set<number>>(new Set())
 
+  // Follow state: map from choice_list id → config id (or null if not followed)
+  const [followedMap, setFollowedMap] = useState<Record<number, number>>({})
+  const [followingId, setFollowingId] = useState<number | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+
+  const showToast = (msg: string) => {
+    setToast(msg)
+    setTimeout(() => setToast(null), 2500)
+  }
+
   useEffect(() => {
     if (!id) return
     apiClient.getPublicProject(id)
@@ -24,6 +34,16 @@ export default function PublicProjectDetailPage() {
       .catch(() => setError('Project not found or not public.'))
       .finally(() => setLoading(false))
   }, [id])
+
+  // Load follow states when user is logged in
+  useEffect(() => {
+    if (!user) return
+    apiClient.getFollowedLists().then(res => {
+      const map: Record<number, number> = {}
+      res.data.results.forEach(cfg => { map[cfg.choice_list] = cfg.id })
+      setFollowedMap(map)
+    }).catch(() => {/* non-critical */})
+  }, [user])
 
   const toggleList = (listId: number) =>
     setExpandedLists(prev => {
@@ -38,6 +58,34 @@ export default function PublicProjectDetailPage() {
     setTimeout(() => setCopiedSlug(s => s === slug ? null : s), 1500)
   }
 
+  const handleFollow = async (listId: number) => {
+    setFollowingId(listId)
+    try {
+      const res = await apiClient.followList(listId)
+      setFollowedMap(prev => ({ ...prev, [listId]: res.data.id }))
+      showToast('Added to your Following list.')
+    } catch {
+      showToast('Failed to follow list.')
+    } finally {
+      setFollowingId(null)
+    }
+  }
+
+  const handleUnfollow = async (listId: number) => {
+    const configId = followedMap[listId]
+    if (!configId) return
+    setFollowingId(listId)
+    try {
+      await apiClient.unfollowList(configId)
+      setFollowedMap(prev => { const n = { ...prev }; delete n[listId]; return n })
+      showToast('Unfollowed.')
+    } catch {
+      showToast('Failed to unfollow.')
+    } finally {
+      setFollowingId(null)
+    }
+  }
+
   if (loading) return <div className="flex items-center justify-center py-16 text-gray-400">Loading…</div>
   if (error || !project) return (
     <div className="bg-red-50 border border-red-200 rounded-xl p-5 text-red-700 text-sm">
@@ -48,6 +96,11 @@ export default function PublicProjectDetailPage() {
 
   return (
     <div>
+      {toast && (
+        <div className="fixed top-5 right-5 z-50 bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg shadow-lg">
+          {toast}
+        </div>
+      )}
       <div className="mb-6">
         <Link to="/" className="text-sm text-indigo-600 hover:underline">← Back to Projects</Link>
       </div>
@@ -94,13 +147,43 @@ export default function PublicProjectDetailPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => copyUrl(csvUrl, list.slug)}
-                    className="shrink-0 ml-4 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors"
-                  >
-                    {copiedSlug === list.slug ? '✓ Copied!' : 'Copy CSV URL'}
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0 ml-4">
+                    {user && (
+                      followedMap[list.id] ? (
+                        <div className="flex items-center gap-1">
+                          <Link
+                            to={`/following/${followedMap[list.id]}`}
+                            className="text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 px-3 py-1.5 rounded transition-colors"
+                          >
+                            Following ✓
+                          </Link>
+                          <button
+                            onClick={() => handleUnfollow(list.id)}
+                            disabled={followingId === list.id}
+                            className="text-xs text-gray-400 hover:text-red-500 px-2 py-1.5 rounded transition-colors disabled:opacity-50"
+                            title="Unfollow"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => handleFollow(list.id)}
+                          disabled={followingId === list.id}
+                          className="text-xs bg-gray-50 border border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-700 hover:bg-indigo-50 px-3 py-1.5 rounded transition-colors disabled:opacity-50"
+                        >
+                          {followingId === list.id ? 'Following…' : 'Follow'}
+                        </button>
+                      )
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => copyUrl(csvUrl, list.slug)}
+                      className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors"
+                    >
+                      {copiedSlug === list.slug ? '✓ Copied!' : 'Copy CSV URL'}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Choices table */}

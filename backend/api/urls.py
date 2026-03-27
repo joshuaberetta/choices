@@ -4,6 +4,7 @@ from .views import (
     ProjectViewSet, ChoiceListViewSet, ChoiceViewSet,
     PublicProjectViewSet,
     CollectionViewSet, PublicCollectionViewSet,
+    UserChoiceListConfigViewSet,
     CSRFView, LoginView, LogoutView, MeView, ChangePasswordView,
 )
 
@@ -13,6 +14,7 @@ router.register(r'projects', ProjectViewSet, basename='project')
 router.register(r'choice-lists', ChoiceListViewSet, basename='choice-list')
 router.register(r'choices', ChoiceViewSet, basename='choice')
 router.register(r'collections', CollectionViewSet, basename='collection')
+router.register(r'user-choice-lists', UserChoiceListConfigViewSet, basename='user-choice-list')
 
 urlpatterns = [
     # Public project endpoints — must appear BEFORE router.urls so that

@@ -38,6 +38,7 @@ Browser / KoboToolbox
    ├── /{user}/{id}/*/add        → Django (KoboToolbox webhook)
    ├── /{user}/{id}/*/remove     → Django (KoboToolbox soft-delete webhook)
    ├── /{user}/{id}/*/delete     → Django (KoboToolbox hard-delete webhook)
+   ├── /{follower}/{id}/custom/* → Django (personalised CSV export; no auth)
    └── /*                        → React SPA (served from Nginx)
 ```
 
@@ -94,6 +95,22 @@ CollectionProject     (M2M join; a project may belong to many collections)
 CollectionShare       (grants a non-owner user access to manage a collection)
 ├── collection        (FK → Collection)
 └── user              (FK → User)
+
+UserChoiceListConfig  (a user's personal configuration for a followed public list)
+├── user              (FK → User)
+├── choice_list       (FK → ChoiceList)
+└── label_column_name (overrides the list’s label header in the personalised CSV)
+
+UserChoiceListColumn  (user-defined extra columns attached to a UserChoiceListConfig)
+├── config            (FK → UserChoiceListConfig)
+├── name              (column identifier; unique per config)
+└── order
+
+UserChoiceExtraValue  (sparse: one row per config × choice × column)
+├── config            (FK → UserChoiceListConfig)
+├── choice            (FK → Choice)
+├── column            (FK → UserChoiceListColumn)
+└── value
 
 ChoiceList
 ├── project           (FK → Project)
@@ -242,6 +259,32 @@ Project responses include a `role` field (`"owner"` or `"shared"`), `owner_usern
 | `PATCH` | `/api/choices/{id}/` | Update a choice (label, value, order) |
 | `DELETE` | `/api/choices/{id}/` | Hard-delete a choice |
 | `PATCH` | `/api/choices/{id}/set_extra_value/` | Set a column value: `{column_id, value}` |
+| `PATCH` | `/api/choices/{id}/set_user_extra_value/` | Set a user-column value for a followed list: `{config_id, column_id, value}` |
+
+#### Following Lists (user-choice-lists)
+
+Personal configurations for public choice lists a user is following. All routes require session authentication.
+
+| Method | URL | Description |
+|--------|-----|-------------|
+| `GET` | `/api/user-choice-lists/` | List all followed configs for the current user |
+| `POST` | `/api/user-choice-lists/` | Follow a list: `{"choice_list": <id>}` |
+| `GET` | `/api/user-choice-lists/{id}/` | Get config detail (includes `original_columns`, `export_url`) |
+| `PATCH` | `/api/user-choice-lists/{id}/` | Update config (e.g. `label_column_name`) |
+| `DELETE` | `/api/user-choice-lists/{id}/` | Unfollow (deletes config and all user-column data) |
+| `GET` | `/api/user-choice-lists/{id}/choices/` | Get choices for the followed list with user-column values |
+| `POST` | `/api/user-choice-lists/{id}/add_column/` | Add a user column: `{name}` |
+| `PATCH` | `/api/user-choice-lists/{id}/update_column/` | Rename a user column: `{column_id, name}` |
+| `DELETE` | `/api/user-choice-lists/{id}/remove_column/` | Delete a user column: `{column_id}` |
+| `POST` | `/api/user-choice-lists/{id}/import_csv/` | Bulk-import user-column values from CSV (multipart `file`). Upserts only; never deletes choices. |
+
+#### Personalised CSV export (no auth)
+
+| Method | URL | Description |
+|--------|-----|-------------|
+| `GET` | `/{follower_username}/{project_slug}/custom/{list_slug}.csv` | Download personalised CSV: original columns + user-defined columns. No authentication required. |
+
+The label header in the personalised CSV respects the `label_column_name` set on the `UserChoiceListConfig`, falling back to the list’s own `label_column_name`, then `"label"`.
 
 All list endpoints return paginated responses:
 ```json
@@ -345,6 +388,20 @@ Disable `require_auth` only if you need KoboToolbox to call the endpoints withou
 ### Public projects
 
 Owners can mark a project as **public** via the Settings panel. Public projects appear in the unauthenticated **Public Projects** tab and via `GET /api/projects/public/`. The detail endpoint (`/api/projects/public/{id}/`) returns the project's choice lists and their non-removed choices — useful for read-only embeds or sharing data with collaborators who don't have an account.
+
+---
+
+### Following & Customising Public Lists
+
+Logged-in users can **follow** any public choice list and maintain a personal layer of customisation on top of it:
+
+- **Label override** — set a different `label_column_name` for your personalised CSV (e.g. `label::French (fr)`).
+- **User columns** — add arbitrary extra columns (e.g. translation columns) that are stored only in your config and never affect the source list.
+- **Inline editing** — edit user-column cell values directly in the Following detail page.
+- **CSV import** — bulk-upload user-column values from a CSV file (upsert-only; source choices are never modified).
+- **Personalised export URL** — every followed list gets a permanent, unauthenticated URL (`/{you}/{project}/custom/{list}.csv`) that serves the original columns plus your user columns.
+
+Follow buttons appear on **Public Projects** detail pages and **Public Collections** detail pages. The **Following** tab (authenticated users only) lists all followed lists.
 
 ---
 

@@ -30,7 +30,7 @@ class PlainTextJSONParser(BaseParser):
         return json.loads(stream.read().decode('utf-8'))
 
 from django.db.models import Prefetch, Q
-from .models import Project, ChoiceList, Choice, ChoiceListColumn, ChoiceExtraValue, ProjectShare
+from .models import Project, ChoiceList, Choice, ChoiceListColumn, ChoiceExtraValue, ProjectShare, UserChoiceListConfig, UserChoiceListColumn, UserChoiceExtraValue
 from .serializers import (
     ProjectSerializer,
     PublicProjectSerializer,
@@ -39,6 +39,9 @@ from .serializers import (
     ChoiceSerializer,
     ChoiceListColumnSerializer,
     ChoiceExtraValueSerializer,
+    UserChoiceListConfigSerializer,
+    UserChoiceListColumnSerializer,
+    UserChoiceExtraValueSerializer,
 )
 
 
@@ -433,6 +436,26 @@ class ChoiceViewSet(viewsets.ModelViewSet):
             defaults={'value': value},
         )
         return Response(ChoiceExtraValueSerializer(ev).data)
+
+    @action(detail=True, methods=['patch'], url_path='set_user_extra_value')
+    def set_user_extra_value(self, request, pk=None):
+        """Create or update a user-extra column value for this choice (follower only)."""
+        choice = self.get_object()
+        config_id = request.data.get('config_id')
+        column_id = request.data.get('column_id')
+        value = request.data.get('value', '')
+        if config_id is None or column_id is None:
+            return Response({'error': 'config_id and column_id are required'}, status=status.HTTP_400_BAD_REQUEST)
+        config = get_object_or_404(UserChoiceListConfig, id=config_id, user=request.user)
+        if config.choice_list != choice.choice_list:
+            return Response({'error': 'config does not match this choice\'s list'}, status=status.HTTP_400_BAD_REQUEST)
+        column = get_object_or_404(UserChoiceListColumn, id=column_id, config=config)
+        uev, _ = UserChoiceExtraValue.objects.update_or_create(
+            config=config, choice=choice, column=column,
+            defaults={'value': value},
+        )
+        return Response(UserChoiceExtraValueSerializer(uev).data)
+
 
 
 class KoboCSVExportView(APIView):
@@ -1076,4 +1099,238 @@ class PublicCollectionViewSet(viewsets.ReadOnlyModelViewSet):
             'page_size': page_size,
             'results': serializer.data,
         })
+
+
+# ---------------------------------------------------------------------------
+# Phase 9: User follow / customise ViewSet
+# ---------------------------------------------------------------------------
+
+class UserChoiceListConfigViewSet(viewsets.ModelViewSet):
+    """CRUD for a user's followed list configs. Scoped to the requesting user."""
+    serializer_class = UserChoiceListConfigSerializer
+
+    def get_queryset(self):
+        return UserChoiceListConfig.objects.filter(
+            user=self.request.user
+        ).select_related(
+            'choice_list__project__owner',
+        ).prefetch_related('columns')
+
+    def perform_create(self, serializer):
+        choice_list_id = self.request.data.get('choice_list')
+        if not choice_list_id:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'choice_list': 'This field is required.'})
+        # The target list must be on a public project or a project the user can read.
+        cl = get_object_or_404(ChoiceList, id=choice_list_id)
+        user = self.request.user
+        can_read = (
+            cl.project.is_public
+            or cl.project.owner == user
+            or cl.project.shares.filter(user=user).exists()
+        )
+        if not can_read:
+            raise PermissionDenied("You do not have permission to follow this list.")
+        serializer.save(user=user, choice_list=cl)
+
+    # ------------------------------------------------------------------ choices
+
+    @action(detail=True, methods=['get'], url_path='choices')
+    def choices(self, request, pk=None):
+        """Return the choice list's choices augmented with user extra values for this config."""
+        config = self.get_object()
+        cl = config.choice_list
+        result = []
+        for choice in cl.choices.prefetch_related('extra_values', 'user_extra_values').order_by('order'):
+            ev_list = [
+                {'id': ev.id, 'column': ev.column_id, 'value': ev.value}
+                for ev in choice.extra_values.all()
+            ]
+            uev_list = [
+                {'id': uev.id, 'column': uev.column_id, 'value': uev.value}
+                for uev in choice.user_extra_values.filter(config=config)
+            ]
+            result.append({
+                'id': choice.id,
+                'value': choice.value,
+                'label': choice.label,
+                'order': choice.order,
+                'extra_values': ev_list,
+                'user_extra_values': uev_list,
+            })
+        return Response(result)
+
+    # ------------------------------------------------------------------ columns
+
+    @action(detail=True, methods=['post'], url_path='add_column')
+    def add_column(self, request, pk=None):
+        config = self.get_object()
+        name = (request.data.get('name') or '').strip()
+        if not name:
+            return Response({'error': 'name is required'}, status=status.HTTP_400_BAD_REQUEST)
+        if config.columns.filter(name=name).exists():
+            return Response({'error': 'A column with this name already exists'}, status=status.HTTP_400_BAD_REQUEST)
+        order = config.columns.count()
+        column = UserChoiceListColumn.objects.create(config=config, name=name, order=order)
+        return Response(UserChoiceListColumnSerializer(column).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['patch'], url_path='update_column')
+    def update_column(self, request, pk=None):
+        config = self.get_object()
+        column_id = request.data.get('column_id')
+        new_name = (request.data.get('name') or '').strip()
+        if not column_id or not new_name:
+            return Response({'error': 'column_id and name are required'}, status=status.HTTP_400_BAD_REQUEST)
+        column = get_object_or_404(UserChoiceListColumn, id=column_id, config=config)
+        if config.columns.filter(name=new_name).exclude(pk=column.pk).exists():
+            return Response({'error': 'A column with this name already exists'}, status=status.HTTP_400_BAD_REQUEST)
+        column.name = new_name
+        column.save()
+        return Response(UserChoiceListColumnSerializer(column).data)
+
+    @action(detail=True, methods=['delete'], url_path='remove_column')
+    def remove_column(self, request, pk=None):
+        config = self.get_object()
+        column_id = request.data.get('column_id')
+        if not column_id:
+            return Response({'error': 'column_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+        column = get_object_or_404(UserChoiceListColumn, id=column_id, config=config)
+        column.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # ------------------------------------------------------------------ import
+
+    @action(detail=True, methods=['post'], url_path='import')
+    def import_csv(self, request, pk=None):
+        """Bulk-upsert user extra column values from a CSV.
+
+        The CSV must have a 'name' (or 'value') column to match choices.
+        Remaining columns are treated as user extra column names to upsert.
+        Rows with no matching choice are skipped (reported in response).
+        """
+        config = self.get_object()
+        cl = config.choice_list
+        uploaded = request.FILES.get('file')
+        if not uploaded:
+            return Response({'error': 'file is required'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            text = uploaded.read().decode('utf-8-sig')
+            dialect = csv.Sniffer().sniff(text[:2048], delimiters=',;\t|')
+            reader = csv.DictReader(StringIO(text), dialect=dialect)
+            raw_rows = list(reader)
+            rows = [
+                {k.strip().lower(): (v.strip() if v else '') for k, v in row.items()}
+                for row in raw_rows
+            ]
+        except Exception as e:
+            return Response({'error': f'Could not parse CSV: {e}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not rows:
+            return Response({'error': 'CSV file is empty'}, status=status.HTTP_400_BAD_REQUEST)
+
+        sample = rows[0]
+        id_col = 'name' if 'name' in sample else ('value' if 'value' in sample else None)
+        if not id_col:
+            return Response(
+                {'error': 'CSV must have a "name" (or "value") column to match choices.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        SKIP = {id_col, 'name', 'value', 'label'}
+        extra_col_names = [k for k in sample.keys() if k not in SKIP]
+        if not extra_col_names:
+            return Response({'error': 'No extra columns found in CSV beyond name/value/label.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Get or create UserChoiceListColumn rows
+        col_map = {}
+        for col_name in extra_col_names:
+            col, _ = UserChoiceListColumn.objects.get_or_create(
+                config=config,
+                name=col_name,
+                defaults={'order': config.columns.count()},
+            )
+            col_map[col_name] = col
+
+        # Build choice lookup by value field
+        choice_lookup = {c.value: c for c in cl.choices.all()}
+
+        matched = 0
+        skipped = 0
+        uev_to_upsert = []
+        for row in rows:
+            choice_value = row.get(id_col, '').strip()
+            choice = choice_lookup.get(choice_value)
+            if choice is None:
+                skipped += 1
+                continue
+            matched += 1
+            for col_name, col in col_map.items():
+                uev_to_upsert.append((choice, col, row.get(col_name, '')))
+
+        # Bulk upsert — update_or_create in a loop (acceptable for typical import sizes)
+        for choice, col, value in uev_to_upsert:
+            UserChoiceExtraValue.objects.update_or_create(
+                config=config, choice=choice, column=col,
+                defaults={'value': value},
+            )
+
+        # Return refreshed config
+        config.refresh_from_db()
+        serializer = UserChoiceListConfigSerializer(config)
+        return Response({
+            'matched': matched,
+            'skipped': skipped,
+            'config': serializer.data,
+        })
+
+
+# ---------------------------------------------------------------------------
+# Phase 9: Public custom CSV export view
+# ---------------------------------------------------------------------------
+
+class UserCustomCSVExportView(APIView):
+    """
+    Public CSV export for a follower's customised view of a choice list.
+    URL: /{follower_username}/{project_slug}/custom/{list_slug}.csv
+    No authentication required — the URL is publicly accessible.
+    """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request, follower_username, project_slug, list_slug):
+        config = get_object_or_404(
+            UserChoiceListConfig,
+            user__username=follower_username,
+            choice_list__project__slug=project_slug,
+            choice_list__slug=list_slug,
+        )
+        cl = config.choice_list
+        name_col = 'name'
+        label_col = config.label_column_name or cl.label_column_name or 'label'
+        orig_cols = list(cl.columns.order_by('order', 'id'))
+        user_cols = list(config.columns.order_by('order', 'id'))
+
+        output = StringIO()
+        writer = csv.writer(output)
+        writer.writerow(
+            [name_col, label_col]
+            + [c.name for c in orig_cols]
+            + [c.name for c in user_cols]
+        )
+
+        for choice in cl.choices.prefetch_related('extra_values', 'user_extra_values').all():
+            ev_map = {ev.column_id: ev.value for ev in choice.extra_values.all()}
+            uev_map = {
+                uev.column_id: uev.value
+                for uev in choice.user_extra_values.filter(config=config)
+            }
+            writer.writerow(
+                [choice.value, choice.label]
+                + [ev_map.get(col.id, '') for col in orig_cols]
+                + [uev_map.get(col.id, '') for col in user_cols]
+            )
+
+        response = HttpResponse(output.getvalue(), content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="{list_slug}.csv"'
+        return response
 

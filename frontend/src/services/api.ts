@@ -174,6 +174,48 @@ export interface Choice {
   extra_values: ChoiceExtraValue[];
 }
 
+// Phase 9: User follow / customise types
+export interface UserChoiceListColumn {
+  id: number;
+  name: string;
+  order: number;
+}
+
+export interface UserChoiceListConfig {
+  id: number;
+  choice_list: number;
+  choice_list_name: string;
+  choice_list_slug: string;
+  project_id: number;
+  project_name: string;
+  project_slug: string;
+  owner_username: string;
+  label_column_name: string;
+  original_label_column_name: string;
+  export_url: string;
+  original_columns: UserChoiceListColumn[];
+  columns: UserChoiceListColumn[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserChoiceExtraValue {
+  id: number;
+  column: number;
+  column_name: string;
+  value: string;
+}
+
+// Choice as seen in the followed list detail (includes both original and user extra values)
+export interface FollowedChoice {
+  id: number;
+  value: string;
+  label: string;
+  order: number;
+  extra_values: { id: number; column: number; value: string }[];
+  user_extra_values: { id: number; column: number; value: string }[];
+}
+
 const apiClient = {
   // Projects
   getProjects: () => API.get<PaginatedResponse<Project>>('/projects/'),
@@ -278,6 +320,30 @@ const apiClient = {
   getPublicCollection: (id: number) => API.get<PublicCollection>(`/collections/public/${id}/`),
   getPublicCollectionProjects: (id: number, page = 1, pageSize = 10, search = '') =>
     API.get<CollectionProjectsPage>(`/collections/public/${id}/projects/`, { params: { page, page_size: pageSize, ...(search ? { search } : {}) } }),
+
+  // Phase 9: User follow / customise
+  getFollowedLists: () => API.get<PaginatedResponse<UserChoiceListConfig>>('/user-choice-lists/'),
+  getFollowedList: (id: number) => API.get<UserChoiceListConfig>(`/user-choice-lists/${id}/`),
+  getFollowedListChoices: (configId: number) =>
+    API.get<FollowedChoice[]>(`/user-choice-lists/${configId}/choices/`),
+  followList: (choiceListId: number) =>
+    API.post<UserChoiceListConfig>('/user-choice-lists/', { choice_list: choiceListId }),
+  unfollowList: (id: number) => API.delete(`/user-choice-lists/${id}/`),
+  updateFollowConfig: (id: number, data: { label_column_name?: string }) =>
+    API.patch<UserChoiceListConfig>(`/user-choice-lists/${id}/`, data),
+  addUserColumn: (configId: number, name: string) =>
+    API.post<UserChoiceListColumn>(`/user-choice-lists/${configId}/add_column/`, { name }),
+  updateUserColumn: (configId: number, columnId: number, name: string) =>
+    API.patch<UserChoiceListColumn>(`/user-choice-lists/${configId}/update_column/`, { column_id: columnId, name }),
+  removeUserColumn: (configId: number, columnId: number) =>
+    API.delete(`/user-choice-lists/${configId}/remove_column/`, { data: { column_id: columnId } }),
+  setUserExtraValue: (choiceId: number, configId: number, columnId: number, value: string) =>
+    API.patch<UserChoiceExtraValue>(`/choices/${choiceId}/set_user_extra_value/`, { config_id: configId, column_id: columnId, value }),
+  importUserColumns: (configId: number, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return API.post(`/user-choice-lists/${configId}/import/`, form)
+  },
 };
 
 export default apiClient;

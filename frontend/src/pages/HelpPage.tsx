@@ -95,6 +95,16 @@ const sections: Section[] = [
     label: 'Public Projects',
   },
   {
+    id: 'following',
+    label: 'Following Lists',
+    subsections: [
+      { id: 'following-follow', label: 'Following a list' },
+      { id: 'following-customise', label: 'Customising columns' },
+      { id: 'following-export', label: 'Custom CSV export URL' },
+      { id: 'following-import', label: 'Bulk CSV import' },
+    ],
+  },
+  {
     id: 'collections',
     label: 'Collections',
     subsections: [
@@ -727,6 +737,108 @@ Content-Type: application/json
           If <Code>require_auth</Code> is enabled, callers still need credentials to add or
           remove choices even when the project is public.
         </Note>
+
+        {/* ── Following Lists ── */}
+        <Heading2 id="following">Following Lists</Heading2>
+        <P>
+          Any logged-in user can <strong>follow</strong> a public choice list to create a
+          personal configuration layer on top of it. Following lets you add your own extra
+          columns (e.g. translations), override the label column name, and share a
+          personalised CSV export URL — all without changing the source list.
+        </P>
+
+        <Heading3 id="following-follow">Following a list</Heading3>
+        <P>
+          Open a <strong>Public Projects</strong> or <strong>Public Collections</strong> detail
+          page. Each choice list row has a <strong>Follow</strong> button (visible when you are
+          logged in). Click it to follow the list. A confirmation badge
+          (“Following ✓”) replaces the button once you are following.
+        </P>
+        <P>
+          On Public Collections detail pages there is also a{' '}
+          <strong>Follow all lists</strong> button in the collection header that follows every
+          visible unfollowed list in one click.
+        </P>
+        <P>
+          To see all your followed lists, click <strong>Following</strong> in the navigation
+          bar. Each card shows the list name, your user columns, and a <strong>Copy URL</strong>{' '}
+          button for the personalised CSV export. Click the card title to open the detail page.
+        </P>
+        <P>
+          To stop following a list, click <strong>Unfollow</strong> on the Following page or
+          inside the detail page. All your user-column data for that list will be deleted.
+        </P>
+
+        <Heading3 id="following-customise">Customising columns</Heading3>
+        <P>
+          Inside a followed list’s detail page you can:
+        </P>
+        <Ul>
+          <Li>
+            <strong>Override the label column name</strong> — type a custom header (e.g.{' '}
+            <Code>label::French (fr)</Code>) into the <em>Label column name</em> field and
+            press Enter or click away to save.
+          </Li>
+          <Li>
+            <strong>Add user columns</strong> — click <strong>+ Add column</strong> and enter
+            a name. The column appears in the choices table and in your personalised CSV.
+          </Li>
+          <Li>
+            <strong>Rename a user column</strong> — click the column name in the header to
+            edit it inline.
+          </Li>
+          <Li>
+            <strong>Delete a user column</strong> — click the ✕ button in the column header.
+            All cell values for that column will be permanently deleted.
+          </Li>
+          <Li>
+            <strong>Edit cell values</strong> — click any cell in a user column to edit its
+            value inline. Original list columns (name, label, and the list’s own extra columns)
+            are read-only.
+          </Li>
+        </Ul>
+        <Note>
+          User columns are private to your account. They do not affect the source choice list
+          or any other user’s view.
+        </Note>
+
+        <Heading3 id="following-export">Custom CSV export URL</Heading3>
+        <P>
+          Every followed list has a permanent, unauthenticated CSV export URL of the form:
+        </P>
+        <Pre>{`/{your_username}/{project_slug}/custom/{list_slug}.csv`}</Pre>
+        <P>
+          This URL is shown on the detail page and the Following list page. Anyone with the
+          URL can download the CSV — no login required. The CSV includes:
+        </P>
+        <Ul>
+          <Li>All original list columns (name, label, the list’s own extra columns)</Li>
+          <Li>Your user-defined extra columns</Li>
+        </Ul>
+        <P>
+          The label header uses your <em>label column name</em> override if set; otherwise
+          falls back to the list’s own label column name, then <Code>label</Code>.
+        </P>
+        <P>
+          You can paste this URL directly into KoboToolbox as an external CSV source to keep
+          your XLSForm supplied with a personalised version of the choice list.
+        </P>
+
+        <Heading3 id="following-import">Bulk CSV import</Heading3>
+        <P>
+          Use the <strong>Import CSV</strong> card on the detail page to bulk-set user-column
+          values. Upload a CSV file containing a <Code>name</Code> column (matching the choice
+          names) and one column per user column you want to populate.
+        </P>
+        <P>
+          The import is <strong>upsert-only</strong>: existing values for rows present in the
+          CSV are updated; rows absent from the CSV are left unchanged; source choices are
+          never created, modified, or deleted.
+        </P>
+        <P>
+          Any column in the uploaded CSV that does not yet exist as a user column will be
+          created automatically.
+        </P>
 
         {/* ── Collections ── */}
         <Heading2 id="collections">Collections</Heading2>

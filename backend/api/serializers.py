@@ -1,6 +1,10 @@
 from rest_framework import serializers
 from django.db.models import Count
-from .models import Project, ChoiceList, Choice, ChoiceListColumn, ChoiceExtraValue, ProjectShare, Collection, CollectionProject
+from .models import (
+    Project, ChoiceList, Choice, ChoiceListColumn, ChoiceExtraValue,
+    ProjectShare, Collection, CollectionProject,
+    UserChoiceListConfig, UserChoiceListColumn, UserChoiceExtraValue,
+)
 
 
 class ChoiceListColumnSerializer(serializers.ModelSerializer):
@@ -244,3 +248,59 @@ class PublicCollectionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Collection
         fields = ['id', 'slug', 'name', 'description', 'owner_username', 'is_public', 'project_count', 'updated_at']
+
+
+# ---------------------------------------------------------------------------
+# Phase 9: User follow / customise serializers
+# ---------------------------------------------------------------------------
+
+class UserChoiceListColumnSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserChoiceListColumn
+        fields = ['id', 'name', 'order']
+        read_only_fields = ['id']
+
+
+class UserChoiceExtraValueSerializer(serializers.ModelSerializer):
+    column_name = serializers.CharField(source='column.name', read_only=True)
+
+    class Meta:
+        model = UserChoiceExtraValue
+        fields = ['id', 'column', 'column_name', 'value']
+        read_only_fields = ['id', 'column_name']
+
+
+class UserChoiceListConfigSerializer(serializers.ModelSerializer):
+    columns = UserChoiceListColumnSerializer(many=True, read_only=True)
+    original_columns = serializers.SerializerMethodField()
+    export_url = serializers.SerializerMethodField()
+    choice_list_name = serializers.CharField(source='choice_list.name', read_only=True)
+    choice_list_slug = serializers.CharField(source='choice_list.slug', read_only=True)
+    project_id = serializers.IntegerField(source='choice_list.project.id', read_only=True)
+    project_name = serializers.CharField(source='choice_list.project.name', read_only=True)
+    project_slug = serializers.CharField(source='choice_list.project.slug', read_only=True)
+    owner_username = serializers.CharField(source='choice_list.project.owner.username', read_only=True)
+    original_label_column_name = serializers.CharField(source='choice_list.label_column_name', read_only=True)
+
+    def get_export_url(self, obj):
+        return f"/{obj.user.username}/{obj.choice_list.project.slug}/custom/{obj.choice_list.slug}.csv"
+
+    def get_original_columns(self, obj):
+        cols = obj.choice_list.columns.order_by('order', 'id')
+        return ChoiceListColumnSerializer(cols, many=True).data
+
+    class Meta:
+        model = UserChoiceListConfig
+        fields = [
+            'id', 'choice_list', 'choice_list_name', 'choice_list_slug',
+            'project_id', 'project_name', 'project_slug', 'owner_username',
+            'label_column_name', 'original_label_column_name',
+            'export_url', 'original_columns', 'columns', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'choice_list_name', 'choice_list_slug',
+            'project_id', 'project_name', 'project_slug', 'owner_username',
+            'original_label_column_name', 'export_url',
+            'original_columns', 'columns', 'created_at', 'updated_at',
+        ]
+

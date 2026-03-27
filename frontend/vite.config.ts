@@ -19,6 +19,11 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
+      // Phase 9: follower custom CSV export: /<follower>/<project>/custom/<list>.csv
+      '^/[^/]+/[^/]+/custom/[^/]+\.csv$': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
       // KoboToolbox endpoints: /<username>/<project>/<list>/export/<file>.csv  and  /<username>/<project>/<list>/(add|remove|delete)
       '^/[^/]+/[^/]+/[^/]+/export/[^/]+\.csv$': {
         target: 'http://localhost:8000',

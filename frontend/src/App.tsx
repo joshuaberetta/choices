@@ -10,6 +10,8 @@ import CollectionDetailPage from './pages/CollectionDetailPage'
 import PublicCollectionDetailPage from './pages/PublicCollectionDetailPage'
 import MyCollectionsPage from './pages/MyCollectionsPage'
 import PublicCollectionsPage from './pages/PublicCollectionsPage'
+import FollowingPage from './pages/FollowingPage'
+import FollowedListDetailPage from './pages/FollowedListDetailPage'
 import { useAuthStore } from './store/authStore'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -40,6 +42,14 @@ export default function App() {
               </div>
             </Link>
             <div className="flex items-center gap-4">
+              {user && (
+                <Link
+                  to="/following"
+                  className="text-indigo-200 hover:text-white text-sm transition-colors"
+                >
+                  Following
+                </Link>
+              )}
               {user && (
                 <Link
                   to="/collections"
@@ -76,6 +86,8 @@ export default function App() {
             <Route path="/collections/public/:id" element={<PublicCollectionDetailPage />} />
             <Route path="/collections" element={<ProtectedRoute><MyCollectionsPage /></ProtectedRoute>} />
             <Route path="/collections/:id" element={<ProtectedRoute><CollectionDetailPage /></ProtectedRoute>} />
+            <Route path="/following" element={<ProtectedRoute><FollowingPage /></ProtectedRoute>} />
+            <Route path="/following/:configId" element={<ProtectedRoute><FollowedListDetailPage /></ProtectedRoute>} />
             <Route path="/" element={<ProtectedRoute><ChoiceListsPage /></ProtectedRoute>} />
             <Route path="/:projectSlug/:choiceListSlug" element={<ProtectedRoute><ChoiceListDetailPage /></ProtectedRoute>} />
             <Route path="/help" element={<HelpPage />} />

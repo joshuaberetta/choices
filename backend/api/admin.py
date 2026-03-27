@@ -1,5 +1,9 @@
 from django.contrib import admin
-from .models import Project, ChoiceList, Choice, ProjectShare, Collection, CollectionProject, CollectionShare
+from .models import (
+    Project, ChoiceList, Choice, ProjectShare,
+    Collection, CollectionProject, CollectionShare,
+    UserChoiceListConfig, UserChoiceListColumn, UserChoiceExtraValue,
+)
 
 
 @admin.register(Project)
@@ -72,3 +76,24 @@ class CollectionShareAdmin(admin.ModelAdmin):
     search_fields = ('collection__name', 'user__username')
     list_filter = ('collection',)
     readonly_fields = ('created_at',)
+
+
+@admin.register(UserChoiceListConfig)
+class UserChoiceListConfigAdmin(admin.ModelAdmin):
+    list_display = ('user', 'choice_list', 'label_column_name', 'created_at')
+    search_fields = ('user__username', 'choice_list__name')
+    list_filter = ('user',)
+    readonly_fields = ('created_at', 'updated_at')
+
+
+@admin.register(UserChoiceListColumn)
+class UserChoiceListColumnAdmin(admin.ModelAdmin):
+    list_display = ('config', 'name', 'order')
+    list_filter = ('config',)
+    ordering = ('config', 'order', 'id')
+
+
+@admin.register(UserChoiceExtraValue)
+class UserChoiceExtraValueAdmin(admin.ModelAdmin):
+    list_display = ('config', 'choice', 'column', 'value')
+    list_filter = ('config',)

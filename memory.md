@@ -1,9 +1,9 @@
 # Choices — Project Memory
-_Last updated: 2025-07-15_
+_Last updated: 2025-07-18_
 
 ## Current status
-- Last completed phase: Phase 7 — Collections
-- Currently working on: Phase 8 — Production Deployment
+- Last completed phase: Phase 9 — Following & Customising Public Lists
+- Currently working on: (nothing active)
 
 ## What is implemented
 
@@ -34,6 +34,8 @@ _Last updated: 2025-07-15_
 - `0007_phase6_access_control` — `Project.is_public`, `ChoiceList.require_auth`, `ProjectShare`
 - `0008_name_generation_default` — changed `name_generation` default from `'uuid'` to `'from_label'`
 - `0009_phase7_collections` — `Collection`, `CollectionProject`, `CollectionShare`
+- `0010_collectionproject_one_collection_per_project` — adds unique constraint to `CollectionProject`
+- `0011_phase9_user_follow_configs` — `UserChoiceListConfig`, `UserChoiceListColumn`, `UserChoiceExtraValue`
 
 ### Data model summary
 ```
@@ -46,6 +48,9 @@ ProjectShare(project FK, user FK, unique_together=('project','user'), created_at
 Collection(owner FK, name, slug [globally unique], description, is_public, created_at, updated_at)
   └─ CollectionProject(collection FK, project FK [on_delete=PROTECT], order; unique_together)
 CollectionShare(collection FK, user FK, unique_together=('collection','user'), created_at)
+UserChoiceListConfig(user FK, choice_list FK, label_column_name, created_at, updated_at; unique_together=user+choice_list)
+  └─ UserChoiceListColumn(config FK, name, order; unique_together=config+name)
+UserChoiceExtraValue(config FK, choice FK, column FK, value; unique_together=config+choice+column)
 ```
 
 ### KoboToolbox integration (Phases 2–3)
@@ -211,8 +216,35 @@ CollectionShare(collection FK, user FK, unique_together=('collection','user'), c
 - `/collections/public` and `/collections/public/:id` React routes must be registered before `/collections/:id`
 - `memory.md`, `README.md`, and `HelpPage.tsx` should all be updated at the end of each phase
 
+### Phase 9: Following & Customising Public Lists (migration 0011)
+
+**Models added (`backend/api/models.py`):**
+- `UserChoiceListConfig(user, choice_list, label_column_name; unique_together=user+choice_list)` — one row per user per followed list
+- `UserChoiceListColumn(config, name, order; unique_together=config+name)` — user-defined extra columns
+- `UserChoiceExtraValue(config, choice, column, value; unique_together=config+choice+column)` — sparse cell values for user columns
+
+**Backend:**
+- `UserChoiceListConfigViewSet` — CRUD, `choices` action, `add_column`, `update_column`, `remove_column`, `import_csv` actions; scoped to `user=request.user`
+- `ChoiceViewSet.set_user_extra_value` — PATCH `/api/choices/{id}/set_user_extra_value/` — validates config ownership and column membership
+- `UserCustomCSVExportView` — AllowAny, `GET /{follower}/{project_slug}/custom/{list_slug}.csv`; outputs original + user columns with configurable label header
+- URL pattern for custom export registered **BEFORE** Kobo patterns in `choices/urls.py` (critical ordering)
+- `UserChoiceListConfigSerializer` includes `original_columns`, `export_url`, `label_column_name`, `original_label_column_name` plus nested `UserChoiceListColumnSerializer`
+
+**Frontend:**
+- `FollowingPage` — `/following` (auth-required) — lists followed configs, copy URL, unfollow
+- `FollowedListDetailPage` — `/following/:configId` — label override, export URL card, CSV import, user column CRUD, choices table with inline editing of user-column cells
+- Follow/Unfollow buttons added to `PublicProjectDetailPage` and `PublicCollectionDetailPage` (with "Follow all" bulk action)
+- `useFollowedLists` hook for fetching followed list data
+- "Following" nav link (auth-only) added to header
+
+**Key notes:**
+- `UserCustomCSVExportView` path must come before Kobo patterns — `custom` keyword prevents slug collision
+- `import_csv` for user configs is upsert-only (never deletes choices from the underlying list)
+- `set_user_extra_value` validates: config belongs to request.user AND column belongs to that config
+- `original_columns` in serializer eliminates extra round-trip from frontend
+
 ## What's next
-- Phase 8: Production Deployment — PostgreSQL, environment hardening, domain config for `choices.imtools.info`
+- (No active phase — Phase 9 was the last planned feature)
 
 ## File/path quick-reference
 - `backend/api/models.py` — all data models
@@ -236,5 +268,11 @@ CollectionShare(collection FK, user FK, unique_together=('collection','user'), c
 - `frontend/src/pages/PublicCollectionsPage.tsx` — public collection browser with search
 - `frontend/src/pages/PublicCollectionDetailPage.tsx` — public collection with nested project/list/choices tree
 - `nginx/nginx.conf` — reverse proxy config
+- `frontend/src/hooks/useFollowedLists.ts` — `useFollowedLists`, `useFollowedList` hooks
+- `frontend/src/pages/FollowingPage.tsx` — list of followed configs
+- `frontend/src/pages/FollowedListDetailPage.tsx` — full customisation UI for a followed list
+- `frontend/src/pages/PublicProjectDetailPage.tsx` — public project view (now with follow buttons)
+- `frontend/src/pages/PublicCollectionDetailPage.tsx` — public collection view (now with follow buttons)
 - `plan.md` — Stage 1 plan (Phases 1–5, all complete)
-- `plan-stage2.md` — Stage 2 plan (Phases 6–8; Phases 6–7 complete)
+- `plan-stage2.md` — Stage 2 plan (Phases 6–8; all complete)
+- `plan-modified-public-lists.md` — Phase 9 plan (complete)
