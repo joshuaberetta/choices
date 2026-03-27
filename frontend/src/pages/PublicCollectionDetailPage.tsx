@@ -31,6 +31,7 @@ export default function PublicCollectionDetailPage() {
   // Follow state: map from choice_list id → config id
   const [followedMap, setFollowedMap] = useState<Record<number, number>>({})
   const [followingId, setFollowingId] = useState<number | null>(null)
+  const [followingProjectId, setFollowingProjectId] = useState<number | null>(null)
   const [toast, setToast] = useState<string | null>(null)
 
   const showToast = (msg: string) => {
@@ -144,6 +145,25 @@ export default function PublicCollectionDetailPage() {
     showToast(`Followed ${followed} list${followed !== 1 ? 's' : ''}.`)
   }
 
+  const handleFollowProject = async (projectId: number, lists: PublicChoiceList[]) => {
+    setFollowingProjectId(projectId)
+    let followed = 0
+    for (const list of lists) {
+      if (followedMap[list.id]) continue
+      try {
+        const res = await apiClient.followList(list.id)
+        setFollowedMap(prev => ({ ...prev, [list.id]: res.data.id }))
+        followed++
+      } catch {
+        // skip already-followed or permission errors
+      }
+    }
+    setFollowingProjectId(null)
+    showToast(followed > 0
+      ? `Followed ${followed} list${followed !== 1 ? 's' : ''}.`
+      : 'All lists in this project already followed.')
+  }
+
   if (loading) return <div className="flex items-center justify-center py-16 text-gray-400">Loading…</div>
   if (error || !collection) return (
     <div className="bg-red-50 border border-red-200 rounded-xl p-5 text-red-700 text-sm">
@@ -183,7 +203,7 @@ export default function PublicCollectionDetailPage() {
                 onClick={handleFollowAll}
                 className="text-sm text-indigo-600 hover:text-indigo-800 px-3 py-1.5 rounded-lg border border-indigo-200 hover:border-indigo-300 transition-colors"
               >
-                Follow all lists
+                Follow collection
               </button>
               <Link
                 to="/collections"
@@ -283,21 +303,32 @@ export default function PublicCollectionDetailPage() {
               const lists: PublicChoiceList[] = project.choice_lists ?? []
               return (
                 <div key={project.id} className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-                  <button
-                    onClick={() => toggleProject(project.id)}
-                    className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50 transition-colors"
-                  >
-                    <div>
-                      <span className="font-semibold text-gray-900">{project.name}</span>
-                      {project.description && (
-                        <p className="text-sm text-gray-500 mt-0.5">{project.description}</p>
-                      )}
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        by {project.owner_username} · {project.list_count} list{project.list_count !== 1 ? 's' : ''} · Updated {new Date(project.updated_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <span className={`text-gray-400 transition-transform ml-4 shrink-0 ${expanded ? 'rotate-90' : ''}`}>›</span>
-                  </button>
+                  <div className="flex items-center justify-between px-5 py-4">
+                    <button
+                      onClick={() => toggleProject(project.id)}
+                      className="flex-1 flex items-center gap-3 text-left hover:opacity-80 transition-opacity min-w-0"
+                    >
+                      <div className="min-w-0">
+                        <span className="font-semibold text-gray-900">{project.name}</span>
+                        {project.description && (
+                          <p className="text-sm text-gray-500 mt-0.5">{project.description}</p>
+                        )}
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          by {project.owner_username} · {project.list_count} list{project.list_count !== 1 ? 's' : ''} · Updated {new Date(project.updated_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <span className={`text-gray-400 transition-transform ml-2 shrink-0 ${expanded ? 'rotate-90' : ''}`}>›</span>
+                    </button>
+                    {user && lists.length > 0 && (
+                      <button
+                        onClick={() => handleFollowProject(project.id, lists)}
+                        disabled={followingProjectId === project.id}
+                        className="ml-3 shrink-0 text-xs bg-indigo-600 text-white px-3 py-1.5 rounded hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                      >
+                        {followingProjectId === project.id ? 'Following…' : 'Follow project'}
+                      </button>
+                    )}
+                  </div>
 
                   {expanded && (
                     <div className="border-t border-gray-100">

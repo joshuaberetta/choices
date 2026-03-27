@@ -15,6 +15,7 @@ export default function PublicProjectDetailPage() {
   // Follow state: map from choice_list id → config id (or null if not followed)
   const [followedMap, setFollowedMap] = useState<Record<number, number>>({})
   const [followingId, setFollowingId] = useState<number | null>(null)
+  const [followingAll, setFollowingAll] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
 
   const showToast = (msg: string) => {
@@ -86,6 +87,26 @@ export default function PublicProjectDetailPage() {
     }
   }
 
+  const handleFollowAll = async () => {
+    if (!project) return
+    setFollowingAll(true)
+    let followed = 0
+    for (const list of project.choice_lists) {
+      if (followedMap[list.id]) continue
+      try {
+        const res = await apiClient.followList(list.id)
+        setFollowedMap(prev => ({ ...prev, [list.id]: res.data.id }))
+        followed++
+      } catch {
+        // skip already-followed or permission errors
+      }
+    }
+    setFollowingAll(false)
+    showToast(followed > 0
+      ? `Followed ${followed} list${followed !== 1 ? 's' : ''}.`
+      : 'All lists already followed.')
+  }
+
   if (loading) return <div className="flex items-center justify-center py-16 text-gray-400">Loading…</div>
   if (error || !project) return (
     <div className="bg-red-50 border border-red-200 rounded-xl p-5 text-red-700 text-sm">
@@ -115,12 +136,23 @@ export default function PublicProjectDetailPage() {
           <span className="text-xs bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded shrink-0">Public</span>
         </div>
         {user && (
-          <p className="mt-4 text-xs text-indigo-600 bg-indigo-50 border border-indigo-100 rounded px-3 py-2">
-            You are logged in as <strong>{user.username}</strong>.{' '}
-            {project.owner_username === user.username
-              ? <Link to="/" className="underline">Manage this project →</Link>
-              : 'If you have access to this project, you can manage it from your Projects page.'}
-          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            {project.choice_lists && project.choice_lists.length > 0 && (
+              <button
+                onClick={handleFollowAll}
+                disabled={followingAll}
+                className="text-sm bg-indigo-600 text-white px-4 py-1.5 rounded hover:bg-indigo-700 transition-colors disabled:opacity-50"
+              >
+                {followingAll ? 'Following…' : 'Follow project'}
+              </button>
+            )}
+            <p className="text-xs text-indigo-600">
+              Logged in as <strong>{user.username}</strong>.{' '}
+              {project.owner_username === user.username
+                ? <Link to="/" className="underline">Manage this project →</Link>
+                : 'You can manage shared projects from your Projects page.'}
+            </p>
+          </div>
         )}
       </div>
 
