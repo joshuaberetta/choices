@@ -129,11 +129,13 @@ export default function PublicProjectDetailPage() {
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
+              <span className="text-xs bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded shrink-0">Public</span>
+            </div>
             <p className="text-sm text-gray-500 mt-0.5">by {project.owner_username}</p>
             {project.description && <p className="text-gray-600 mt-2 text-sm">{project.description}</p>}
           </div>
-          <span className="text-xs bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded shrink-0">Public</span>
         </div>
         {user && (
           <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -141,7 +143,7 @@ export default function PublicProjectDetailPage() {
               <button
                 onClick={handleFollowAll}
                 disabled={followingAll}
-                className="text-sm bg-indigo-600 text-white px-4 py-1.5 rounded hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                className="text-sm bg-indigo-600 text-white px-4 py-1.5 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
               >
                 {followingAll ? 'Following…' : 'Follow project'}
               </button>
@@ -160,13 +162,13 @@ export default function PublicProjectDetailPage() {
         <div className="text-center py-12 text-gray-400">This project has no public choice lists yet.</div>
       ) : (
         <div className="space-y-3">
-          {project.choice_lists.map(list => {
+          {[...(project.choice_lists)].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })).map(list => {
             const csvUrl = `${window.location.origin}/${project.owner_username}/${project.slug}/${list.slug}/export/${list.slug}.csv`
             const isExpanded = expandedLists.has(list.id)
             return (
-              <div key={list.id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div key={list.id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden group/row">
                 {/* Header */}
-                <div className="flex items-center justify-between px-5 py-4">
+                <div className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 transition-colors">
                   <button
                     onClick={() => toggleList(list.id)}
                     className="flex items-center gap-3 flex-1 text-left"
@@ -185,14 +187,14 @@ export default function PublicProjectDetailPage() {
                         <div className="flex items-center gap-1">
                           <Link
                             to={`/following/${followedMap[list.id]}`}
-                            className="text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 px-3 py-1.5 rounded transition-colors"
+                            className="text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors"
                           >
                             Following ✓
                           </Link>
                           <button
                             onClick={() => handleUnfollow(list.id)}
                             disabled={followingId === list.id}
-                            className="text-xs text-gray-400 hover:text-red-500 px-2 py-1.5 rounded transition-colors disabled:opacity-50"
+                            className="text-xs text-gray-400 hover:text-red-500 px-2 py-1.5 rounded-lg transition-colors disabled:opacity-50"
                             title="Unfollow"
                           >
                             ✕
@@ -202,7 +204,7 @@ export default function PublicProjectDetailPage() {
                         <button
                           onClick={() => handleFollow(list.id)}
                           disabled={followingId === list.id}
-                          className="text-xs bg-gray-50 border border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-700 hover:bg-indigo-50 px-3 py-1.5 rounded transition-colors disabled:opacity-50"
+                          className="text-xs bg-gray-50 border border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-700 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
                         >
                           {followingId === list.id ? 'Following…' : 'Follow'}
                         </button>
@@ -215,6 +217,12 @@ export default function PublicProjectDetailPage() {
                     >
                       {copiedSlug === list.slug ? '✓ Copied!' : 'Copy CSV URL'}
                     </button>
+                    <Link
+                      to={`/public/projects/${project.id}/lists/${list.slug}`}
+                      className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors opacity-0 group-hover/row:opacity-100"
+                    >
+                      View →
+                    </Link>
                   </div>
                 </div>
 

@@ -300,34 +300,36 @@ export default function PublicCollectionDetailPage() {
           <div className="space-y-3">
             {projects.map(project => {
               const expanded = expandedProjects.has(project.id)
-              const lists: PublicChoiceList[] = project.choice_lists ?? []
+              const lists: PublicChoiceList[] = [...(project.choice_lists ?? [])].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
               return (
                 <div key={project.id} className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-                  <div className="flex items-center justify-between px-5 py-4">
+                  <div className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 transition-colors">
                     <button
                       onClick={() => toggleProject(project.id)}
-                      className="flex-1 flex items-center gap-3 text-left hover:opacity-80 transition-opacity min-w-0"
+                      className="flex items-center gap-3 flex-1 text-left flex-wrap"
                     >
-                      <div className="min-w-0">
-                        <span className="font-semibold text-gray-900">{project.name}</span>
-                        {project.description && (
-                          <p className="text-sm text-gray-500 mt-0.5">{project.description}</p>
-                        )}
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          by {project.owner_username} · {project.list_count} list{project.list_count !== 1 ? 's' : ''} · Updated {new Date(project.updated_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <span className={`text-gray-400 transition-transform ml-2 shrink-0 ${expanded ? 'rotate-90' : ''}`}>›</span>
+                      <span className="font-semibold text-gray-900">{project.name}</span>
+                      <span className="text-xs font-mono bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded">{project.slug}</span>
+                      <span className="text-xs text-gray-400">by {project.owner_username}</span>
+                      <span className="text-xs text-gray-400">{project.list_count} list{project.list_count !== 1 ? 's' : ''}</span>
                     </button>
-                    {user && lists.length > 0 && (
-                      <button
-                        onClick={() => handleFollowProject(project.id, lists)}
-                        disabled={followingProjectId === project.id}
-                        className="ml-3 shrink-0 text-xs bg-indigo-600 text-white px-3 py-1.5 rounded hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                    <div className="flex items-center gap-2 shrink-0">
+                      {user && lists.length > 0 && (
+                        <button
+                          onClick={() => handleFollowProject(project.id, lists)}
+                          disabled={followingProjectId === project.id}
+                          className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                        >
+                          {followingProjectId === project.id ? 'Following…' : 'Follow project'}
+                        </button>
+                      )}
+                      <svg
+                        className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+                        fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
                       >
-                        {followingProjectId === project.id ? 'Following…' : 'Follow project'}
-                      </button>
-                    )}
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
                   </div>
 
                   {expanded && (
@@ -335,82 +337,83 @@ export default function PublicCollectionDetailPage() {
                       {lists.length === 0 ? (
                         <p className="px-5 py-4 text-sm text-gray-400">No choice lists.</p>
                       ) : (
-                        <div className="divide-y divide-gray-100">
-                          {lists.map(list => {
-                            const csvUrl = buildCsvUrl(project.owner_username, project.slug, list.slug)
-                            const choices = list.choices ?? []
-                            return (
-                              <div key={list.id} className="px-5 py-4">
-                                <div className="flex items-center justify-between gap-3 mb-2">
-                                  <div>
-                                    <span className="font-medium text-gray-800 text-sm">{list.name}</span>
-                                    {list.description && <p className="text-xs text-gray-400">{list.description}</p>}
-                                  </div>
-                                  <div className="flex items-center gap-2 shrink-0">
-                                    {user && (
-                                      followedMap[list.id] ? (
-                                        <div className="flex items-center gap-1">
-                                          <Link
-                                            to={`/following/${followedMap[list.id]}`}
-                                            className="text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 px-2.5 py-1 rounded transition-colors"
-                                          >
-                                            Following ✓
-                                          </Link>
-                                          <button
-                                            onClick={() => handleUnfollow(list.id)}
-                                            disabled={followingId === list.id}
-                                            className="text-xs text-gray-400 hover:text-red-500 px-2 py-1 rounded transition-colors disabled:opacity-50"
-                                            title="Unfollow"
-                                          >
-                                            ✕
-                                          </button>
-                                        </div>
-                                      ) : (
-                                        <button
-                                          onClick={() => handleFollow(list.id)}
-                                          disabled={followingId === list.id}
-                                          className="text-xs bg-gray-50 border border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-700 hover:bg-indigo-50 px-2.5 py-1 rounded transition-colors disabled:opacity-50"
-                                        >
-                                          {followingId === list.id ? 'Following…' : 'Follow'}
-                                        </button>
-                                      )
-                                    )}
-                                    <button
-                                      onClick={() => copyUrl(csvUrl)}
-                                      className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${
-                                        copiedUrl === csvUrl
-                                          ? 'bg-green-100 border-green-300 text-green-700'
-                                          : 'border-indigo-200 text-indigo-600 hover:bg-indigo-50'
-                                      }`}
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-gray-50 border-b border-gray-100">
+                              <th className="px-5 py-2.5 text-left font-semibold text-gray-500 text-xs uppercase tracking-wide">Name</th>
+                              <th className="px-5 py-2.5 text-left font-semibold text-gray-500 text-xs uppercase tracking-wide">ID</th>
+                              <th className="px-5 py-2.5 text-left font-semibold text-gray-500 text-xs uppercase tracking-wide">Choices</th>
+                              <th className="px-5 py-2.5 text-right font-semibold text-gray-500 text-xs uppercase tracking-wide"></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {lists.map(list => {
+                              const csvUrl = buildCsvUrl(project.owner_username, project.slug, list.slug)
+                              return (
+                                <tr key={list.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors group/row">
+                                  <td className="px-5 py-3 font-medium text-gray-900">
+                                    <Link
+                                      to={`/public/projects/${project.id}/lists/${list.slug}`}
+                                      className="hover:text-indigo-600 hover:underline transition-colors"
                                     >
-                                      {copiedUrl === csvUrl ? '✓ Copied' : 'Copy CSV URL'}
-                                    </button>
-                                  </div>
-                                </div>
-                                {choices.length > 0 && (
-                                  <div className="mt-1 max-h-40 overflow-y-auto">
-                                    <table className="w-full text-xs border-collapse">
-                                      <thead>
-                                        <tr className="bg-gray-50">
-                                          <th className="text-left px-2 py-1 text-gray-500 font-medium border border-gray-200">Name</th>
-                                          <th className="text-left px-2 py-1 text-gray-500 font-medium border border-gray-200">Label</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {choices.map((choice, i) => (
-                                          <tr key={i} className="hover:bg-gray-50">
-                                            <td className="px-2 py-1 border border-gray-200 font-mono text-gray-600">{choice.value}</td>
-                                            <td className="px-2 py-1 border border-gray-200 text-gray-800">{choice.label}</td>
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          })}
-                        </div>
+                                      {list.name}
+                                    </Link>
+                                  </td>
+                                  <td className="px-5 py-3 font-mono text-gray-500 text-xs">{list.slug}</td>
+                                  <td className="px-5 py-3 text-gray-400 text-xs">{(list.choices ?? []).length}</td>
+                                  <td className="px-5 py-3 text-right whitespace-nowrap">
+                                    <div className="flex items-center justify-end gap-2 opacity-0 group-hover/row:opacity-100 transition-opacity">
+                                      {user && (
+                                        followedMap[list.id] ? (
+                                          <div className="flex items-center gap-1">
+                                            <Link
+                                              to={`/following/${followedMap[list.id]}`}
+                                              className="text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors"
+                                            >
+                                              Following ✓
+                                            </Link>
+                                            <button
+                                              onClick={() => handleUnfollow(list.id)}
+                                              disabled={followingId === list.id}
+                                              className="text-xs text-gray-400 hover:text-red-500 px-2 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                                              title="Unfollow"
+                                            >
+                                              ✕
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <button
+                                            onClick={() => handleFollow(list.id)}
+                                            disabled={followingId === list.id}
+                                            className="text-xs bg-gray-50 border border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-700 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                                          >
+                                            {followingId === list.id ? 'Following…' : 'Follow'}
+                                          </button>
+                                        )
+                                      )}
+                                      <button
+                                        onClick={() => copyUrl(csvUrl)}
+                                        className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                                          copiedUrl === csvUrl
+                                            ? 'bg-green-100 border-green-300 text-green-700'
+                                            : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-700 hover:bg-indigo-50'
+                                        }`}
+                                      >
+                                        {copiedUrl === csvUrl ? '✓ Copied' : 'Copy CSV URL'}
+                                      </button>
+                                      <Link
+                                        to={`/public/projects/${project.id}/lists/${list.slug}`}
+                                        className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition-colors"
+                                      >
+                                        View →
+                                      </Link>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
                       )}
                     </div>
                   )}

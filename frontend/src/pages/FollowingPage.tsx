@@ -99,10 +99,10 @@ export default function FollowingPage() {
       {!loading && !error && configs.length === 0 && (
         <div className="text-center py-16 text-gray-400">
           <p className="text-lg">You are not following any lists yet.</p>
-          <p className="text-sm mt-2">
+          {/* <p className="text-sm mt-2">
             Browse <Link to="/collections/public" className="text-indigo-600 hover:underline">public collections</Link> or{' '}
             <Link to="/public/projects" className="text-indigo-600 hover:underline">public projects</Link> and click "Follow all lists" on a project.
-          </p>
+          </p> */}
         </div>
       )}
 
@@ -141,7 +141,7 @@ export default function FollowingPage() {
                   <button
                     onClick={() => handleUnfollowProject(projectSlug, group.configs)}
                     disabled={isUnfollowingThis}
-                    className="ml-4 shrink-0 text-xs bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded transition-colors disabled:opacity-50"
+                    className="ml-4 shrink-0 text-xs bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
                   >
                     {isUnfollowingThis ? 'Removing…' : 'Unfollow project'}
                   </button>
@@ -151,7 +151,7 @@ export default function FollowingPage() {
                 {!isCollapsed && (
                   <div className="divide-y divide-gray-50">
                     {group.configs.map(cfg => (
-                      <div key={cfg.id} className="px-5 py-3">
+                      <div key={cfg.id} className="px-5 py-3 group/row">
                         <div className="flex items-center justify-between gap-4">
                           <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
@@ -175,24 +175,24 @@ export default function FollowingPage() {
                               </div>
                             )}
                           </div>
-                          <div className="flex items-center gap-2 shrink-0">
+                          <div className="flex items-center gap-2 shrink-0 opacity-0 group-hover/row:opacity-100 transition-opacity">
                             <button
                               onClick={() => copyUrl(cfg)}
-                              className="text-xs bg-gray-50 border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 text-gray-600 hover:text-indigo-700 px-2.5 py-1.5 rounded transition-colors"
+                              className="text-xs bg-gray-50 border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 text-gray-600 hover:text-indigo-700 px-3 py-1.5 rounded-lg transition-colors"
                               title="Copy public CSV export URL"
                             >
                               {copied === cfg.id ? '✓ Copied' : 'Copy CSV URL'}
                             </button>
                             <Link
                               to={`/following/${cfg.id}`}
-                              className="text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 px-2.5 py-1.5 rounded transition-colors"
+                              className="text-xs bg-indigo-600 text-white hover:bg-indigo-700 px-3 py-1.5 rounded-lg transition-colors"
                             >
-                              Open
+                              View →
                             </Link>
                             <button
                               onClick={() => handleUnfollow(cfg.id)}
                               disabled={unfollowing === cfg.id}
-                              className="text-xs bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 px-2.5 py-1.5 rounded transition-colors disabled:opacity-50"
+                              className="text-xs bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
                             >
                               {unfollowing === cfg.id ? '…' : 'Unfollow'}
                             </button>

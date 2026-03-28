@@ -83,6 +83,10 @@ export default function FollowedListDetailPage() {
   const [dupLabelName, setDupLabelName] = useState('')
   const [dupLabelLoading, setDupLabelLoading] = useState(false)
 
+  const [choicePage, setChoicePage] = useState(1)
+  const [choicePageSize, setChoicePageSize] = useState<25 | 50 | 100>(50)
+  const [choiceSearch, setChoiceSearch] = useState('')
+
   const [copied, setCopied] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
 
@@ -303,6 +307,16 @@ export default function FollowedListDetailPage() {
   const origCols = config.original_columns ?? []
   const effectiveLabel = config.label_column_name || config.original_label_column_name || 'label'
 
+  const filteredChoices = choiceSearch
+    ? choices.filter(c =>
+        c.label.toLowerCase().includes(choiceSearch.toLowerCase()) ||
+        c.value.toLowerCase().includes(choiceSearch.toLowerCase())
+      )
+    : choices
+  const choiceTotalPages = Math.max(1, Math.ceil(filteredChoices.length / choicePageSize))
+  const clampedPage = Math.min(choicePage, choiceTotalPages)
+  const pagedChoices = filteredChoices.slice((clampedPage - 1) * choicePageSize, clampedPage * choicePageSize)
+
   return (
     <div>
       {toast && (
@@ -520,15 +534,63 @@ export default function FollowedListDetailPage() {
           <h2 className="text-sm font-semibold text-gray-700">
             Choices
             {choices.length > 0 && (
-              <span className="ml-2 text-xs text-gray-400 font-normal">{choices.length}</span>
+              <span className="ml-2 text-xs text-gray-400 font-normal">
+                {choiceSearch ? `${filteredChoices.length} of ${choices.length}` : choices.length}
+              </span>
             )}
           </h2>
         </div>
+
+        {/* Search + page size row */}
+        {!choicesLoading && choices.length > 0 && (
+          <div className="flex items-center gap-2 px-5 py-2.5 border-b border-gray-100 bg-gray-50/50">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                placeholder="Search by label or name…"
+                value={choiceSearch}
+                onChange={e => { setChoiceSearch(e.target.value); setChoicePage(1) }}
+                className="w-full border border-gray-200 rounded-lg pl-8 pr-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <svg className="absolute left-2.5 top-2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+              </svg>
+              {choiceSearch && (
+                <button onClick={() => { setChoiceSearch(''); setChoicePage(1) }} className="absolute right-2.5 top-2 text-gray-400 hover:text-gray-600">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <span className="text-xs text-gray-400 mr-1">Per page:</span>
+              {([25, 50, 100] as const).map(n => (
+                <button
+                  key={n}
+                  onClick={() => { setChoicePageSize(n); setChoicePage(1) }}
+                  className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                    choicePageSize === n ? 'bg-indigo-600 text-white' : 'border border-gray-200 text-gray-500 hover:bg-gray-100'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {choicesLoading ? (
           <div className="py-10 text-center text-gray-400 text-sm">Loading choices…</div>
         ) : choices.length === 0 ? (
           <div className="py-10 text-center text-gray-400 text-sm">No choices in this list.</div>
+        ) : filteredChoices.length === 0 ? (
+          <div className="py-10 text-center text-gray-400 text-sm">
+            No choices match “<span className="font-medium text-gray-600">{choiceSearch}</span>”
+            <span className="block mt-1">
+              <button onClick={() => setChoiceSearch('')} className="text-indigo-600 hover:underline text-xs">Clear search</button>
+            </span>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -554,7 +616,7 @@ export default function FollowedListDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {choices.map(choice => (
+                {pagedChoices.map(choice => (
                   <tr key={choice.id} className="border-b border-gray-50 last:border-b-0 hover:bg-gray-50">
                     {/* label (read-only) */}
                     <td className="px-5 py-3 text-gray-900">{choice.label}</td>
@@ -596,6 +658,37 @@ export default function FollowedListDetailPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Pagination nav */}
+        {!choicesLoading && filteredChoices.length > 0 && choiceTotalPages > 1 && (
+          <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100">
+            <button
+              onClick={() => setChoicePage(p => Math.max(1, p - 1))}
+              disabled={clampedPage <= 1}
+              className="flex items-center gap-1 px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+              Prev
+            </button>
+            <span className="text-sm text-gray-500">
+              Page <span className="font-semibold text-gray-700">{clampedPage}</span> of{' '}
+              <span className="font-semibold text-gray-700">{choiceTotalPages}</span>
+              <span className="hidden sm:inline text-gray-400"> · {filteredChoices.length} choice{filteredChoices.length !== 1 ? 's' : ''}</span>
+            </span>
+            <button
+              onClick={() => setChoicePage(p => Math.min(choiceTotalPages, p + 1))}
+              disabled={clampedPage >= choiceTotalPages}
+              className="flex items-center gap-1 px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Next
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
           </div>
         )}
       </div>

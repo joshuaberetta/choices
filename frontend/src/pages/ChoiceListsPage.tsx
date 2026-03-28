@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useProjects } from '../hooks/useChoiceLists'
+import FollowingPage from './FollowingPage'
 import apiClient, {
   type Project,
   type PublicProject,
@@ -66,34 +67,27 @@ function CombinedPublicTab() {
         <div className="space-y-6">
           {collections.length > 0 && (
             <section>
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-                📁 Collections
-              </p>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Collections</p>
               <div className="space-y-2">
                 {collections.map(c => (
                   <Link
                     key={c.id}
                     to={`/collections/public/${c.id}`}
-                    className="flex overflow-hidden bg-white rounded-xl border border-purple-100 shadow-sm hover:shadow-md hover:border-purple-200 transition-all"
+                    className="block bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all group"
                   >
-                    <div className="w-1 shrink-0 bg-purple-400" />
-                    <div className="flex items-start gap-3 flex-1 p-4">
-                      <span className="text-lg shrink-0 mt-0.5 leading-none">📁</span>
+                    <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
-                        <span className="font-semibold text-gray-900">{c.name}</span>
+                        <span className="font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">{c.name}</span>
                         <span className="ml-2 text-xs text-gray-400">by {c.owner_username}</span>
                         {c.description && (
                           <p className="text-sm text-gray-500 mt-0.5 line-clamp-1">{c.description}</p>
                         )}
+                        <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
+                          <span>{c.project_count} project{c.project_count !== 1 ? 's' : ''}</span>
+                          <span>{new Date(c.updated_at).toLocaleDateString()}</span>
+                        </div>
                       </div>
-                      <div className="text-right shrink-0">
-                        <span className="text-xs text-gray-400">
-                          {c.project_count} project{c.project_count !== 1 ? 's' : ''}
-                        </span>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {new Date(c.updated_at).toLocaleDateString()}
-                        </p>
-                      </div>
+                      <span className="text-xs text-indigo-500 group-hover:text-indigo-700 shrink-0 mt-1">→</span>
                     </div>
                   </Link>
                 ))}
@@ -103,34 +97,27 @@ function CombinedPublicTab() {
 
           {projects.length > 0 && (
             <section>
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-                📄 Projects
-              </p>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Projects</p>
               <div className="space-y-2">
                 {projects.map(p => (
                   <Link
                     key={p.id}
                     to={`/public/projects/${p.id}`}
-                    className="flex overflow-hidden bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all"
+                    className="block bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all group"
                   >
-                    <div className="w-1 shrink-0 bg-gray-200" />
-                    <div className="flex items-start gap-3 flex-1 p-4">
-                      <span className="text-lg shrink-0 mt-0.5 leading-none">📄</span>
+                    <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
-                        <span className="font-semibold text-gray-900">{p.name}</span>
+                        <span className="font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">{p.name}</span>
                         <span className="ml-2 text-xs text-gray-400">by {p.owner_username}</span>
                         {p.description && (
                           <p className="text-sm text-gray-500 mt-0.5 line-clamp-1">{p.description}</p>
                         )}
+                        <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
+                          <span>{p.list_count} list{p.list_count !== 1 ? 's' : ''}</span>
+                          <span>{new Date(p.updated_at).toLocaleDateString()}</span>
+                        </div>
                       </div>
-                      <div className="text-right shrink-0">
-                        <span className="text-xs text-gray-400">
-                          {p.list_count} list{p.list_count !== 1 ? 's' : ''}
-                        </span>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {new Date(p.updated_at).toLocaleDateString()}
-                        </p>
-                      </div>
+                      <span className="text-xs text-indigo-500 group-hover:text-indigo-700 shrink-0 mt-1">→</span>
                     </div>
                   </Link>
                 ))}
@@ -262,7 +249,7 @@ function ProjectSettingsPanel({
 export default function ChoiceListsPage() {
   const { projects, loading, error, refetch: refetchProjects } = useProjects()
 
-  const [activeTab, setActiveTab] = useState<'my' | 'public'>('my')
+  const [activeTab, setActiveTab] = useState<'my' | 'public' | 'following'>('my')
   const [settingsProjectSlug, setSettingsProjectSlug] = useState<string | null>(null)
 
   // Group choice lists by project
@@ -424,6 +411,7 @@ export default function ChoiceListsPage() {
 
   // ── New project form ─────────────────────────────────────────────────────
 
+  const [showNewMenu, setShowNewMenu] = useState(false)
   const [showProjectForm, setShowProjectForm] = useState(false)
   const [projectForm, setProjectForm] = useState({ name: '', slug: '', description: '' })
   const [projectSubmitting, setProjectSubmitting] = useState(false)
@@ -768,7 +756,7 @@ export default function ChoiceListsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {group.lists.map(list => (
+                  {[...group.lists].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })).map(list => (
                     editingId === list.id ? (
                       <tr key={list.id} className="border-b border-gray-50 last:border-b-0 bg-indigo-50/40">
                         <td className="px-4 py-2">
@@ -823,7 +811,7 @@ export default function ChoiceListsPage() {
                                 Delete
                               </button>
                               <Link to={`/${list.project_slug}/${list.slug}`}
-                                className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors">
+                                className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors opacity-0 group-hover/row:opacity-100">
                                 View →
                               </Link>
                             </>
@@ -852,48 +840,77 @@ export default function ChoiceListsPage() {
         <div className="fixed inset-0 z-10" onClick={() => setMoveMenuProjectId(null)} />
       )}
 
-      {/* Page header */}
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold text-gray-900">Projects</h1>
-        {activeTab === 'my' && (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => { setShowCollectionForm(v => !v); setCollectionFormError(null) }}
-              className="px-4 py-2 border border-purple-300 text-purple-700 bg-purple-50 rounded-lg text-sm font-medium hover:bg-purple-100 transition-colors"
-            >
-              {showCollectionForm ? 'Cancel' : '📁 New Collection'}
-            </button>
-            <button
-              onClick={() => { setShowProjectForm(v => !v); setProjectFormError(null) }}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
-            >
-              {showProjectForm ? 'Cancel' : '+ New Project'}
-            </button>
-          </div>
-        )}
-      </div>
-
       {/* Tabs */}
       <div className="flex gap-1 mb-6 border-b border-gray-200">
-        {(['my', 'public'] as const).map(tab => (
+        {(['my', 'public', 'following'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${activeTab === tab ? 'text-indigo-700 border-b-2 border-indigo-600 -mb-px bg-white' : 'text-gray-500 hover:text-gray-700'}`}
           >
-            {tab === 'my' ? 'My Projects' : 'Public'}
+            {tab === 'my' ? 'My Projects' : tab === 'public' ? 'Public' : 'Following'}
           </button>
         ))}
       </div>
 
+      {/* Page header (My Projects / Public only) */}
+      {(activeTab === 'my' || activeTab === 'public') && (
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-2xl font-bold text-gray-900">Projects</h1>
+          {activeTab === 'my' && (
+            <div className="relative">
+              <button
+                onClick={() => setShowNewMenu(v => !v)}
+                className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
+              >
+                + New
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {showNewMenu && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setShowNewMenu(false)} />
+                  <div className="absolute right-0 mt-1 w-44 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1">
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      onClick={() => {
+                        setShowNewMenu(false)
+                        setShowProjectForm(true)
+                        setShowCollectionForm(false)
+                        setProjectFormError(null)
+                      }}
+                    >
+                      New Project
+                    </button>
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      onClick={() => {
+                        setShowNewMenu(false)
+                        setShowCollectionForm(true)
+                        setShowProjectForm(false)
+                        setCollectionFormError(null)
+                      }}
+                    >
+                      New Collection
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {activeTab === 'public' && <CombinedPublicTab />}
+      {activeTab === 'following' && <FollowingPage />}
 
       {activeTab === 'my' && (
         <>
           {/* New collection form */}
           {showCollectionForm && (
             <form onSubmit={handleCreateCollection} className="mb-4 bg-purple-50 rounded-xl border border-purple-200 p-5 shadow-sm">
-              <h2 className="font-semibold text-purple-900 mb-4">📁 Create Collection</h2>
+              <h2 className="font-semibold text-purple-900 mb-4">Create Collection</h2>
               {collectionFormError && (
                 <p className="text-red-600 text-sm mb-3 bg-red-50 px-3 py-2 rounded">{collectionFormError}</p>
               )}
@@ -922,7 +939,11 @@ export default function ChoiceListsPage() {
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
                 </div>
               </div>
-              <div className="mt-4 flex justify-end">
+              <div className="mt-4 flex justify-end gap-2">
+                <button type="button" onClick={() => setShowCollectionForm(false)}
+                  className="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
+                  Cancel
+                </button>
                 <button type="submit" disabled={collectionSubmitting}
                   className="px-4 py-2 bg-purple-700 text-white rounded-lg text-sm font-medium hover:bg-purple-800 disabled:opacity-50 transition-colors">
                   {collectionSubmitting ? 'Creating…' : 'Create Collection'}
@@ -961,7 +982,11 @@ export default function ChoiceListsPage() {
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
               </div>
-              <div className="mt-4 flex justify-end">
+              <div className="mt-4 flex justify-end gap-2">
+                <button type="button" onClick={() => setShowProjectForm(false)}
+                  className="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
+                  Cancel
+                </button>
                 <button type="submit" disabled={projectSubmitting}
                   className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors">
                   {projectSubmitting ? 'Creating…' : 'Create Project'}

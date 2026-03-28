@@ -6,6 +6,7 @@ import LoginPage from './pages/LoginPage'
 import ChangePasswordModal from './components/ChangePasswordModal'
 import HelpPage from './pages/HelpPage'
 import PublicProjectDetailPage from './pages/PublicProjectDetailPage'
+import PublicChoiceListDetailPage from './pages/PublicChoiceListDetailPage'
 import CollectionDetailPage from './pages/CollectionDetailPage'
 import PublicCollectionDetailPage from './pages/PublicCollectionDetailPage'
 import MyCollectionsPage from './pages/MyCollectionsPage'
@@ -42,22 +43,6 @@ export default function App() {
               </div>
             </Link>
             <div className="flex items-center gap-4">
-              {user && (
-                <Link
-                  to="/following"
-                  className="text-indigo-200 hover:text-white text-sm transition-colors"
-                >
-                  Following
-                </Link>
-              )}
-              {user && (
-                <Link
-                  to="/collections"
-                  className="text-indigo-200 hover:text-white text-sm transition-colors"
-                >
-                  Collections
-                </Link>
-              )}
               <Link
                 to="/help"
                 className="text-indigo-200 hover:text-white text-sm transition-colors"
@@ -82,6 +67,7 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/public/projects/:id" element={<PublicProjectDetailPage />} />
+            <Route path="/public/projects/:projectId/lists/:listSlug" element={<PublicChoiceListDetailPage />} />
             <Route path="/collections/public" element={<PublicCollectionsPage />} />
             <Route path="/collections/public/:id" element={<PublicCollectionDetailPage />} />
             <Route path="/collections" element={<ProtectedRoute><MyCollectionsPage /></ProtectedRoute>} />
